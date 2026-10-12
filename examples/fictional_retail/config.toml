@@ -1,0 +1,72 @@
+# Fictional demo config. Copy this file as the starting point for your own.
+
+[runner]
+type = "duckdb"                       # "spark" inside Databricks
+[runner.tables]
+sales = "sales.csv"
+
+[targets]
+file = "targets.csv"
+
+[policy]
+holdout_tolerance = 0.0005            # holdout may not get worse by more than 0.05 points
+max_changes = 6
+
+# Where every reconciliation starts: the definition your tile uses today.
+[start.weekly_sales]
+window = "calendar"
+stores = "comparable"
+measure = "gross"
+tax = "ex"
+
+[metrics.weekly_sales]
+unit = "currency"
+tolerance = 0.003                     # 0.3% mean absolute variance counts as reconciled
+template = "SELECT SUM({measure} {tax}) AS value FROM sales WHERE {window} AND {stores}"
+
+[metrics.weekly_sales.params.window]
+hypothesis = "time_window"
+default = "calendar"
+[metrics.weekly_sales.params.window.keywords]
+fiscal = ["fiscal", "sun-sat"]
+calendar = ["calendar", "mon-sun"]
+
+[metrics.weekly_sales.params.window.options]
+fiscal = "CAST(date AS DATE) BETWEEN DATE '{as_of}' - 6 AND DATE '{as_of}'"
+calendar = "CAST(date AS DATE) BETWEEN DATE '{as_of}' - 5 AND DATE '{as_of}' + 1"
+[metrics.weekly_sales.params.window.describe]
+fiscal = "Sun-Sat ending as_of"
+calendar = "Mon-Sun around as_of"
+
+[metrics.weekly_sales.params.stores]
+hypothesis = "universe"
+default = "comparable"
+[metrics.weekly_sales.params.stores.keywords]
+comparable = ["comparable", "like-for-like"]
+all = ["all stores"]
+
+[metrics.weekly_sales.params.stores.options]
+comparable = "comparable"
+all = "TRUE"
+
+[metrics.weekly_sales.params.measure]
+hypothesis = "measure"
+default = "gross"
+[metrics.weekly_sales.params.measure.keywords]
+gross = ["gross"]
+net = ["net"]
+
+[metrics.weekly_sales.params.measure.options]
+gross = "gross"
+net = "gross - returns"
+
+[metrics.weekly_sales.params.tax]
+hypothesis = "measure"
+default = "ex"
+[metrics.weekly_sales.params.tax.keywords]
+ex = ["excluding tax", "ex-tax"]
+incl = ["including tax", "incl. tax"]
+
+[metrics.weekly_sales.params.tax.options]
+ex = "+ 0"
+incl = "+ tax"

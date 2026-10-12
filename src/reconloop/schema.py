@@ -1,0 +1,89 @@
+"""Core data structures. Everything the loop reads or writes is one of these."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict
+from datetime import date
+from math import isfinite
+from typing import Any
+
+
+@dataclass
+class Target:
+    """One figure taken from a trusted (gold-standard) report.
+
+    `stated_rule` is the definition the report claims to use, in words. The loop
+    treats it as a hint, not as truth: reports often say one thing and do another.
+    """
+    target_id: str
+    report: str
+    metric: str
+    as_of: str                      # ISO date the figure refers to
+    value: float
+    unit: str = ""
+    stated_rule: str = ""
+    source_file: str = ""
+    page: str = ""
+    split: str = "fit"              # "fit" (used to tune) or "holdout" (used to check)
+    confidence: float = 1.0         # extraction confidence, 0..1
+
+    def __post_init__(self):
+        if not all((self.target_id, self.report, self.metric)):
+            raise ValueError("target_id, report and metric must be nonempty")
+        if date.fromisoformat(self.as_of).isoformat() != self.as_of:
+            raise ValueError("as_of must be an ISO date (YYYY-MM-DD)")
+        if not isfinite(self.value):
+            raise ValueError("target value must be finite")
+        if self.split not in {"fit", "holdout"}:
+            raise ValueError("split must be 'fit' or 'holdout'")
+        if not isfinite(self.confidence) or not 0 <= self.confidence <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+
+
+@dataclass
+class Change:
+    """One proposed edit to a metric's definition, with the business reason for it."""
+    param: str
+    old: str
+    new: str
+    hypothesis: str                 # must be a key in hypotheses.CATALOG
+    rationale: str = ""
+    proposed_by: str = ""
+
+
+@dataclass
+class Iteration:
+    step: int
+    params: dict[str, str]
+    fit_variance: float             # mean absolute relative variance on fit targets
+    holdout_variance: float | None
+    per_target: list[dict[str, Any]]
+    change: Change | None = None
+    accepted: bool | None = None
+    reject_reason: str = ""
+
+
+@dataclass
+class Residual:
+    """What is left once the loop stops, and the most likely explanation."""
+    fit_variance: float
+    holdout_variance: float | None
+    pattern: str                    # "within_tolerance" | "level_shift" | "drift" | "noisy"
+    likely_causes: list[str] = field(default_factory=list)
+    note: str = ""
+
+
+@dataclass
+class ReconRecord:
+    """The show-your-work artifact for one report x metric."""
+    report: str
+    metric: str
+    start_params: dict[str, str]
+    final_params: dict[str, str]
+    final_query: str
+    tolerance: float
+    status: str                     # "reconciled" | "explained_residual" | "unresolved"
+    iterations: list[Iteration]
+    residual: Residual
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
