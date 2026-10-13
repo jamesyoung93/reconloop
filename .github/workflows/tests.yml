@@ -29,4 +29,9 @@ jobs:
       - run: python -m pytest -q
         env:
           RECONLOOP_REQUIRE_OCR: ${{ runner.os == 'Linux' && '1' || '0' }}
+      - name: Check cluster setup script and OCR diagnostics
+        if: runner.os == 'Linux'
+        run: |
+          bash -n deploy/install-ocr.sh
+          python -m reconloop.cli doctor --ocr
       - run: python -m build

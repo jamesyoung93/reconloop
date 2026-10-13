@@ -27,6 +27,8 @@ class Target:
     confidence: float = 1.0         # extraction confidence, 0..1
     extraction_method: str = ""     # text / ocr / supplied CSV
     source_region: str = ""         # JSON [left, top, right, bottom], normalized
+    value_lower: float | None = None  # reviewed chart-estimate bounds, not automatic tolerance
+    value_upper: float | None = None
 
     def __post_init__(self):
         if not all((self.target_id, self.report, self.metric)):
@@ -39,6 +41,11 @@ class Target:
             raise ValueError("split must be 'fit' or 'holdout'")
         if not isfinite(self.confidence) or not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
+        if (self.value_lower is None) != (self.value_upper is None):
+            raise ValueError("provide both estimate bounds or neither")
+        if self.value_lower is not None and (not isfinite(self.value_lower) or not isfinite(self.value_upper)
+                or not self.value_lower <= self.value <= self.value_upper):
+            raise ValueError("estimate bounds must be finite and contain the target value")
 
 
 @dataclass
@@ -102,6 +109,7 @@ class ReconRecord:
     status: str                     # "reconciled" | "explained_residual" | "unresolved"
     iterations: list[Iteration]
     residual: Residual
+    coupling: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

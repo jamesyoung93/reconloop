@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reconloop"
-version = "0.3.0"
+version = "0.4.0"
 description = "Reconcile a rebuilt metric against trusted reports, with an AI or rule-based judge and a show-your-work record."
 readme = "README.md"
 requires-python = ">=3.11"

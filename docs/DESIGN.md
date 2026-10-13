@@ -46,6 +46,15 @@ The obvious automation is tempting and wrong: let an agent tweak the query until
 
 Use `scoring.py` with an eval set of known answers to check that a model judge beats the stated-rule baseline. If it doesn't, use the baseline.
 
+## Coupled metrics
+
+Explicit [coupled groups](COUPLED_METRICS.md) already support identities and shared
+choices across aligned metrics within one report. A bounded deterministic search
+ranks declared combinations on fit periods, then checks one candidate against
+holdouts without trying alternatives after rejection. Every member must finish
+within tolerance and all identities must hold. These groups use their own batch
+solver; independent metrics continue through the judges above.
+
 ## Planned extensions
 
 - **Per-target tolerance and weighting:** big and small figures shouldn't count equally.

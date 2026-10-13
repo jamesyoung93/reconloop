@@ -37,6 +37,8 @@ class ReconSession:
     def from_config(cls, path: str, runner=None):
         from .config import load_config, build_runner
         cfg, specs, targets = load_config(path)
+        if cfg.get("coupled"):
+            raise ValueError("coupled constraints require run_config/reconcile_coupled; independent interactive edits cannot preserve group identities")
         return cls(specs, targets, runner or build_runner(cfg, path), Policy(**cfg.get("policy", {})), cfg.get("start"))
 
     # ---------- discovery ----------

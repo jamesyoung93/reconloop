@@ -155,10 +155,52 @@ endpoints in public TOML. Apply provider timeouts and approved data handling in
 the callback. Tests cover parsing, rendering and the review boundary with a fake
 provider; live vision accuracy on real exports has not been benchmarked.
 
+## Calibrated raster bars
+
+`extract_bars` is a separate estimator for isolated solid-color bars with a
+**verified linear axis**. It handles horizontal and vertical bars, including
+negative values. Supply two axis tick positions/values, a baseline value, RGB
+color, one narrow strip per bar, and verified date/unit metadata. Coordinates are
+full-page fractions from the top-left, matching `bbox` conventions above.
+
+```sh
+python examples/calibrated_bars/generate_pdf.py
+reconloop extract examples/calibrated_bars/extract.toml --out out_bar_review
+```
+
+The command writes page images, calibration, measured pixel endpoints and estimate
+bounds. It exits 2 with review issues and **no trusted targets**. The synthetic
+values are 25, 60 and 85; anti-aliasing may shift an endpoint slightly, which is
+why estimates have bounds instead of fabricated precision.
+
+```python
+from reconloop.extract.charts import extract_bars
+
+result = extract_bars("chart.pdf", "operations", patterns,
+    review=verify_page_and_calibration, evidence_dir="private/extraction/crops")
+result.write("private/extraction")
+```
+
+`verify_page_and_calibration(full_page_image, evidence)` is caller-owned review
+code, not a model confidence score. It must independently verify the exact page,
+bar category, dates, units, both ticks and the crop, returning `True` to approve.
+Default pixel uncertainty is two pixels, minimum one. Bounds propagate to CSV
+targets and per-target audit rows as `value_lower`/`value_upper`; accepted rows are
+marked `chart_estimate_reviewed`. They do not automatically widen reconciliation
+tolerance. Choose a defensible metric tolerance that reflects measurement error,
+or obtain exact data when that error is too large for the intended comparison.
+
+Color matching uses per-row or per-column coverage of the configured strip. Missing,
+fragmented, clipped, out-of-calibration or unanchored bars are rejected. Missing
+bars are not assumed zero. Tick calibration and review remain explicit: no automatic
+axis discovery, stacked/gradient bars, logarithmic/broken axes or chart perspective
+are supported. A rendered page is limited to 50 megapixels. Real export styles
+still need validation; the tests use known synthetic images and PDFs.
+
 ## Remaining extraction limits
 
-This is template-driven OCR, not automatic dashboard understanding. Tiny fonts,
+This is template-driven extraction, not automatic dashboard understanding. Tiny fonts,
 overlapping labels, rotated tiles, international number formats and unlabeled
-charts need layout-specific templates or another extractor. No real Tableau
+charts outside the calibrated bar contract need another extractor. No real Tableau
 export was used to establish accuracy; integration tests exercise actual local
 Tesseract against known synthetic raster data.

@@ -7,15 +7,15 @@ from pathlib import Path
 from .extract.sources import load_sources
 from .batch import select_pairs
 from .metricspec import load_specs
+from .storage import local_path
 
 
 def _rel(base: Path, p: str) -> Path:
-    q = Path(p)
-    return q if q.is_absolute() else (base / q)
+    return local_path(p, base)
 
 
 def load_config(path: str | Path):
-    path = Path(path)
+    path = local_path(path)
     cfg = tomllib.loads(path.read_text(encoding="utf-8"))
     base = path.parent
     specs = load_specs(cfg)
@@ -24,7 +24,7 @@ def load_config(path: str | Path):
 
 
 def build_runner(cfg: dict, path: str | Path):
-    base = Path(path).parent
+    base = local_path(path).parent
     r = cfg.get("runner", {"type": "duckdb"})
     if r.get("type", "duckdb") == "duckdb":
         from .runners.duckdb_runner import DuckDBRunner
@@ -46,6 +46,14 @@ def run_config(path: str | Path, judge=None, out_dir: str | Path | None = None, 
     from .record import write
     cfg, specs, targets = load_config(path)
     groups = select_pairs(specs, targets, reports=reports, metrics=metrics)
+    from .coupled import load_groups, reconcile_coupled
+    coupled = load_groups(cfg, specs)
+    selected_pairs = {(r, m) for r, m, _ in groups}
+    for group in coupled:
+        for report in {r for r, _, _ in groups}:
+            present = {m for r, m in selected_pairs if r == report} & set(group.metrics)
+            if present and present != set(group.metrics):
+                raise ValueError(f"select all members of coupled group {group.name!r} for report {report!r}")
     if judge is not None and judge_factory is not None:
         raise ValueError("provide judge or judge_factory, not both")
     runner = build_runner(cfg, path)
@@ -53,9 +61,19 @@ def run_config(path: str | Path, judge=None, out_dir: str | Path | None = None, 
     judge = judge or SearchJudge()
     start = cfg.get("start", {})
     records = []
+    completed = set()
+    for group in coupled:
+        for report in sorted({r for r, _, _ in groups}):
+            if (report, group.metrics[0]) not in selected_pairs:
+                continue
+            ts = [t for t in targets if t.report == report and t.metric in group.metrics]
+            records.extend(reconcile_coupled(group, specs, ts, runner, policy=policy, start=start, log=log))
+            completed.update((report, m) for m in group.metrics)
     for report, metric, ts in groups:
+        if (report, metric) in completed:
+            continue
         pair_judge = judge_factory(report, metric) if judge_factory else judge
         records.append(reconcile(specs[metric], ts, runner, pair_judge, policy, start=start.get(metric), log=log))
     if out_dir:
         write(records, out_dir)
-    return records
+    return sorted(records, key=lambda r: (r.report, r.metric))

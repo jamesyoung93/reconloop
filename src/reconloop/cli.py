@@ -32,9 +32,26 @@ def main(argv=None):
     j.add_argument("--judge", choices=["search", "stated_rule"], default="stated_rule")
     s = sub.add_parser("score", help="compare final definitions with known answers (demo / eval sets)")
     s.add_argument("out_dir"); s.add_argument("answers")
+    d = sub.add_parser("doctor", help="check PDF/OCR dependencies and optionally probe storage")
+    d.add_argument("--ocr", action="store_true")
+    d.add_argument("--path")
+    d.add_argument("--write-probe", action="store_true")
+    p = sub.add_parser("publish-targets", help="publish a complete extraction directory as an immutable verified bundle")
+    p.add_argument("extraction_dir")
+    p.add_argument("store_root")
+    p.add_argument("--id", dest="bundle_id")
     a = ap.parse_args(argv)
 
-    if a.cmd == "run":
+    if a.cmd == "doctor":
+        from .doctor import diagnose
+        result = diagnose(ocr=a.ocr, path=a.path, write_probe=a.write_probe)
+        print(json.dumps(result, indent=2))
+        if not result["ok"]:
+            raise SystemExit(1)
+    elif a.cmd == "publish-targets":
+        from .storage import publish_targets
+        print(publish_targets(a.extraction_dir, a.store_root, bundle_id=a.bundle_id))
+    elif a.cmd == "run":
         from .config import run_config
         from .judge import SearchJudge, StatedRuleJudge
         judge = SearchJudge() if a.judge == "search" else StatedRuleJudge()
@@ -60,9 +77,10 @@ def main(argv=None):
     elif a.cmd == "extract":
         import tomllib
         from .extract.sources import load_sources
-        path = Path(a.config)
+        from .storage import local_path
+        path = local_path(a.config)
         config = tomllib.loads(path.read_text(encoding="utf-8"))
-        result = load_sources(config["targets"], path.parent, evidence_dir=Path(a.out) / "crops")
+        result = load_sources(config["targets"], path.parent, evidence_dir=local_path(a.out) / "crops")
         result.write(a.out)
         print(f"wrote {len(result.targets)} targets and {len(result.issues)} review issues to {a.out}")
         if result.issues:

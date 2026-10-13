@@ -118,7 +118,9 @@ evaluation; Markdown includes final components for every period and split.
 A share can match with both components incorrectly doubled. The example starts
 ratio metrics with an established category grain rather than pretending a ratio
 alone can identify it. Use count metrics, source checks and component inspection
-to validate that grain. No automatic cross-metric constraints are applied.
+to validate that grain. Constraints are optional and explicit: declare a
+[coupled group](COUPLED_METRICS.md) to enforce identities between components and
+independently targeted volumes. The coupled example demonstrates that repair.
 
 ## Compound proposals
 
@@ -143,7 +145,8 @@ one unit of `max_changes`; no-op, duplicate, stale and oversized edits are rejec
 Holdouts remain excluded from judge state, and the normal acceptance checks apply
 to the whole group. Rejected alternatives may be reconsidered after the current
 definition changes; their earlier attempts remain in the permanent audit.
-Compound changes are within one metric, not a joint optimization across metrics.
+Compound changes operate within one metric. Use the separate
+[coupled solver](COUPLED_METRICS.md) for joint choices across metrics.
 
 ## Explicit revision evidence
 

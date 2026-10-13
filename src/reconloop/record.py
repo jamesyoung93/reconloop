@@ -31,7 +31,8 @@ def _json_safe(value):
 
 
 def write(records: list[ReconRecord], out_dir: str | Path) -> Path:
-    out = Path(out_dir)
+    from .storage import local_path
+    out = local_path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     for r in records:
         (out / record_filename(r.report, r.metric)).write_text(
@@ -49,6 +50,15 @@ def to_markdown(records: list[ReconRecord]) -> str:
                   for status in ("reconciled", "explained_residual", "unresolved")}
         lines.append(f"**{report}**: {len(members)} metrics; " + ", ".join(f"{n} {s}" for s, n in counts.items()) + ".")
     lines.append("")
+    coupled = {(r.report, r.coupling["group"]): r.coupling for r in records if r.coupling}
+    for (report, name), audit in coupled.items():
+        lines += [f"## Coupled group: {report} / {name}", "",
+                  f"Search: {len(audit['fit_candidates'])} fit candidates; {audit['selection']}.",
+                  f"Joint proposal accepted: {audit['accepted']}. {audit['reject_reason']}", "",
+                  "| Identity | Period | Split | Left | Converted right | Passed |", "|---|---|---|---|---|---|"]
+        for e in audit["final_identities"]:
+            lines.append(f"| {e['name']} | {e['as_of']} | {e['split']} | {e['left_value']:.8g} | {e['right_value']:.8g} | {e['passed']} |")
+        lines.append("")
     lines += ["| Report | Metric | Status | Fit variance | Holdout | Changes |", "|---|---|---|---|---|---|"]
     for r in records:
         n = sum(1 for i in r.iterations if i.accepted)
@@ -61,7 +71,9 @@ def to_markdown(records: list[ReconRecord]) -> str:
                   "|---|---|---|---|---|---|"]
         for i in r.iterations:
             if i.change is None:
-                lines.append(f"| {i.step} | start | – | {i.fit_variance:.2%} | {fmt(i.holdout_variance)} | – |")
+                label = "start" if i.step == 0 else "unchanged member in joint proposal"
+                outcome = "–" if i.step == 0 else ("accepted" if i.accepted else f"rejected: {i.reject_reason}")
+                lines.append(f"| {i.step} | {label} | – | {i.fit_variance:.2%} | {fmt(i.holdout_variance)} | {outcome} |")
                 continue
             outcome = "accepted" if i.accepted else f"rejected: {i.reject_reason}"
             changes = "; ".join(f"{c.param}: {c.old} → {c.new}" for c in change_items(i.change))

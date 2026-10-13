@@ -1,0 +1,50 @@
+[runner]
+type = "duckdb"
+[runner.tables]
+events = "events.csv"
+[targets]
+file = "targets.csv"
+
+[param_groups.common.grain]
+hypothesis = "deduplication"
+default = "event"
+[param_groups.common.grain.options]
+raw = "SELECT * FROM events"
+event = "SELECT event_id, event_date, category, MAX(amount) AS amount FROM events GROUP BY event_id, event_date, category"
+
+[start.category_share]
+grain = "raw"
+
+[metrics.category_volume]
+param_groups = ["common"]
+unit = "count"
+tolerance = 0.00001
+template = "WITH source AS ({grain}) SELECT SUM(amount) AS value FROM source WHERE event_date = DATE '{as_of}' AND category = 'A'"
+
+[metrics.total_volume]
+param_groups = ["common"]
+unit = "count"
+tolerance = 0.00001
+template = "WITH source AS ({grain}) SELECT SUM(amount) AS value FROM source WHERE event_date = DATE '{as_of}'"
+
+[metrics.category_share]
+param_groups = ["common"]
+unit = "fraction"
+tolerance = 0.00001
+[metrics.category_share.ratio]
+numerator = "WITH source AS ({grain}) SELECT SUM(amount) AS value FROM source WHERE event_date = DATE '{as_of}' AND category = 'A'"
+denominator = "WITH source AS ({grain}) SELECT SUM(amount) AS value FROM source WHERE event_date = DATE '{as_of}'"
+
+[coupled.category_dashboard]
+metrics = ["category_volume", "total_volume", "category_share"]
+max_candidates = 16
+[coupled.category_dashboard.shared]
+grain = ["category_volume.grain", "total_volume.grain", "category_share.grain"]
+[[coupled.category_dashboard.identities]]
+name = "share_numerator_matches_category"
+left = "category_share.numerator"
+right = "category_volume.value"
+[[coupled.category_dashboard.identities]]
+name = "share_denominator_matches_total"
+left = "category_share.denominator"
+right = "total_volume.value"

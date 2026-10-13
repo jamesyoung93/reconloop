@@ -10,6 +10,8 @@ from .extract.pdf import ExtractionError
 
 
 def run_job(config, out_dir, **kwargs):
+    from .storage import local_path
+    config, out_dir = local_path(config), local_path(out_dir)
     started = datetime.now(timezone.utc)
     run_id = started.strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:12]
     out = Path(out_dir) / run_id

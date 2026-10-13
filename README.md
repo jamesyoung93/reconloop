@@ -49,7 +49,10 @@ reconloop extract examples/tableau_raster/extract.toml --out out_extract
 
 See [PDF extraction](docs/EXTRACTION.md) for tile coordinates, review crops, dates,
 K/M/B values, percentages and limits. The included PDF is synthetic; real Tableau
-layouts need their own templates. The extractor does not read unlabeled charts.
+layouts need their own templates. Solid-color bars can also be measured with two
+verified linear-axis ticks and explicit regions. These estimates retain uncertainty
+bounds and require independent review before becoming targets; automatic chart
+interpretation is not supported. See the [calibrated bar example](examples/calibrated_bars).
 
 ## Multiple metrics in one run
 
@@ -64,6 +67,18 @@ parameter groups reduce repeated config, while each metric keeps independent
 decisions and holdout checks. Use `--report` and `--metric` to select a subset,
 or `ReconSession.open_next()` and `progress()` for an agent work queue. See
 [multi-metric workflow](docs/MULTI_METRIC.md).
+
+For related metrics, declare a coupled group to enforce identities such as
+`share.numerator = category_volume.value`, or require matching parameter choices.
+The bounded solver ranks candidates on fit periods and checks one selected
+candidate against holdouts. It rejects the group if any final member or identity
+fails. See [coupled reconciliation](docs/COUPLED_METRICS.md).
+
+```sh
+python examples/coupled_metrics/generate_data.py
+reconloop run examples/coupled_metrics/config.toml --out out_coupled
+reconloop score out_coupled examples/coupled_metrics/answers.json
+```
 
 ## Versioned data, shares and territories
 
@@ -86,11 +101,25 @@ external scheduler, with a JSON manifest and exit codes for success, review, or
 failure. It does not install a scheduler. Difficult PDF crops can use a caller's
 vision endpoint with [mandatory transcription review](docs/EXTRACTION.md#vision-assisted-transcription).
 
+## Deployment checks and shared targets
+
+```sh
+reconloop doctor --ocr
+reconloop publish-targets private/extraction private/targets --id reviewed-2026-01
+```
+
+The diagnostic renders a PDF and checks the actual OCR engine. Reviewed extraction
+packages can be published as immutable, hash-verified bundles on local storage or
+mounted Unity Catalog volumes. The repository includes a pinned-package cluster
+init script and a readiness notebook. See [deployment and storage](docs/DEPLOYMENT.md)
+for runtime requirements, permissions and checks to run on the actual cluster.
+
 ## Ways to run it
 
 | Mode | Judge | Use when |
 |---|---|---|
 | `reconloop run` | `SearchJudge` or `StatedRuleJudge` | Batch runs, baselines, CI |
+| `reconloop run` with `[coupled]` groups | Bounded deterministic joint search | Explicit identities and shared choices within a report |
 | `reconcile(..., judge=LLMJudge(complete))` | Any model behind a `complete(prompt) -> str` function | You have an API or serving endpoint |
 | `ReconSession` in a notebook | An agent (Genie or Assistant, Copilot) or a person | Interactive work. The agent follows `AGENT_GUIDE.md` and drives `try_change(...)` |
 
@@ -112,6 +141,9 @@ src/reconloop/
   metricspec.py    SQL template + declared options per parameter
   sql.py           snapshot, deduplication and dated assignment builders
   revisions.py     comparisons between declared source vintages
+  coupled.py       fit-only joint search with cross-metric constraints
+  storage.py       immutable verified target bundles and mounted paths
+  doctor.py        dependency, PDF rendering and OCR readiness checks
   jobs.py          isolated batch runs and scheduler manifests
   compare.py       variance and residual shape (level shift / drift / noisy)
   guardrails.py    acceptance rules
@@ -126,6 +158,8 @@ examples/fictional_retail/   demo data generator, config, answers
 examples/multi_metric/       three KPIs with shared parameter declarations
 examples/tableau_raster/     synthetic raster PDF and extraction template
 examples/versioned_metrics/ five KPIs with snapshots, shares and territories
+examples/coupled_metrics/   volumes and share constrained together
+examples/calibrated_bars/   synthetic chart and explicit linear calibration
 notebooks/                   Databricks notebook for agent-as-judge
 AGENT_GUIDE.md               instructions for the agent
 docs/                        design, adapting to your data, extraction
@@ -133,10 +167,13 @@ docs/                        design, adapting to your data, extraction
 
 ## Status
 
-Version 0.3. Multiple report/metric pairs, bounded compound changes, audited ratio
-components, versioned source and alignment options, revision diagnostics, batch
-manifests, and PDF/OCR extraction with an optional reviewed vision callback.
-Shared parameter groups reuse declarations; joint optimization across metrics is not implemented.
+Version 0.4.0 adds bounded coupled reconciliation, reviewed bar-chart estimates,
+verified target bundles and cluster readiness checks to the existing multi-metric,
+versioned-data, ratio, compound-change and PDF/OCR workflows.
+Coupled groups require aligned periods and declared identities; interactive
+single-metric sessions reject coupled configurations. Chart measurement requires
+explicit calibration and review. Live cluster installation and volume access
+still need validation in the deployment environment.
 See `docs/DESIGN.md` for planned extensions.
 
 `explained_residual` means a pattern suggests possible causes; it does not establish that a restatement occurred. Agent-added options remain subject to human review, even if their numbers match.

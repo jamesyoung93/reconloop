@@ -1,8 +1,9 @@
 # Reconciling multiple metrics
 
-One run can reconcile many metrics across many reports. Each report/metric pair
-has independent parameters, tolerance, iterations, residuals and holdout checks.
-Figures can come from one CSV, several CSVs or configured PDF tiles.
+One run can reconcile many metrics across many reports. By default each
+report/metric pair has independent parameters, tolerance, iterations, residuals
+and holdout checks. Explicit coupled groups can enforce cross-metric identities
+within a report. Figures can come from CSVs, reviewed bundles or configured PDFs.
 
 ## Three-KPI example
 
@@ -56,12 +57,19 @@ mutate another. A local `[metrics.<metric>.params.<parameter>]` replaces the who
 shared parameter. Duplicate names across selected groups are an error.
 `[start.<metric>]` remains metric-specific.
 
-Shared declarations do not force the same final choice across metrics. Coupled
-optimization and cross-metric identities remain future work. Bounded compound
-proposals within one metric are supported; see [versioned metrics](VERSIONED_METRICS.md).
-Review conflicting final choices in the report.
+Shared declarations do not force the same final choice across metrics. Declare a
+`[coupled.<group>]` to require matching choices or component identities such as
+share numerator = category volume. See [coupled reconciliation](COUPLED_METRICS.md)
+for the bounded fit-only search, single holdout decision and audit evidence.
+All members must have identical date/split coverage. Select the whole group or
+none of it with `--metric`; partial group selections fail before queries run.
+Bounded compound proposals within one metric are also supported; see
+[versioned metrics](VERSIONED_METRICS.md).
 
 ## Agent work queue
+
+This interactive API supports independent pairs. It rejects coupled configs;
+use `run_config` or `reconloop run` for those groups so identities remain enforced.
 
 ```python
 from reconloop.session import ReconSession
@@ -91,3 +99,4 @@ records = run_config("config.toml",
 `make_completion_callback` is application code. When `judge=` is passed instead,
 that instance is reused across pairs as before; reset external conversation state
 yourself. Do not pass both `judge` and `judge_factory`.
+These judge arguments apply only to metrics outside declared coupled groups.
