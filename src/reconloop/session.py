@@ -1,7 +1,7 @@
 """Interactive session: an agent (Databricks Genie / Assistant, Copilot, or a person) acts as the judge.
 
-The agent never computes variances. It reads `status()`, decides on ONE change with a
-named reason, and calls `try_change(...)`. The session runs the numbers, applies the
+The agent never computes variances. It reads `status()` and calls `try_change(...)`
+or `try_changes(...)` with named reasons. The session runs the numbers, applies the
 guardrails, and records everything. `report()` writes the show-your-work record.
 
     from reconloop.session import ReconSession
@@ -15,10 +15,11 @@ guardrails, and records everything. `report()` writes the show-your-work record.
 from __future__ import annotations
 
 from .compare import classify_residual, evaluate, score, split_targets, summarize_result
-from .guardrails import Policy, check
+from .guardrails import Policy, check, validate_proposal, accepted_changes
 from .hypotheses import CATALOG, RESIDUAL_HINTS
 from .metricspec import MetricSpec
-from .schema import Change, Iteration, ReconRecord, Target
+from .schema import Change, CompoundChange, Iteration, ReconRecord, Target, change_items, change_key
+from .batch import select_pairs
 
 
 class ReconSession:
@@ -27,6 +28,7 @@ class ReconSession:
         self.specs, self.targets, self.runner = specs, targets, runner
         self.policy = policy or Policy()
         self.start = start or {}
+        self._pairs = [(r, m) for r, m, _ in select_pairs(specs, targets)]
         self.records: list[ReconRecord] = []
         self.spec_changes: list[dict] = []     # new options an agent added; need human review
         self._cur = None
@@ -40,12 +42,35 @@ class ReconSession:
     # ---------- discovery ----------
     def pairs(self) -> list[tuple[str, str]]:
         """All (report, metric) pairs that have targets and a spec."""
-        return sorted({(t.report, t.metric) for t in self.targets if t.metric in self.specs})
+        return list(self._pairs)
+
+    def pending_pairs(self, report: str | None = None) -> list[tuple[str, str]]:
+        """Pairs without a closed record; the active pair stays pending until close()."""
+        if report is not None and report not in {r for r, _ in self._pairs}:
+            raise ValueError(f"unknown report: {report}")
+        closed = {(r.report, r.metric) for r in self.records}
+        return [(r, m) for r, m in self._pairs if (r, m) not in closed and (report is None or r == report)]
+
+    def open_next(self, report: str | None = None) -> str:
+        """Open the next unfinished KPI; refuses to discard an active pair."""
+        if self._cur is not None:
+            raise RuntimeError("close the current pair before opening another")
+        pending = self.pending_pairs(report)
+        return self.open(*pending[0]) if pending else "ALL PAIRS CLOSED"
+
+    def progress(self) -> list[dict]:
+        """Report-wide progress without exposing holdout values."""
+        closed = {(r.report, r.metric): r.status for r in self.records}
+        active = (self._cur["report"], self._cur["spec"].name) if self._cur else None
+        return [dict(report=r, metric=m, status="active" if (r, m) == active else closed.get((r, m), "pending"))
+                for r, m in self._pairs]
 
     # ---------- one reconciliation ----------
     def open(self, report: str, metric: str, start: dict[str, str] | None = None) -> str:
         if self._cur is not None:
             raise RuntimeError("close the current pair before opening another")
+        if any((r.report, r.metric) == (report, metric) for r in self.records):
+            raise ValueError("pair already closed; use a new session to rerun it")
         spec = self.specs[metric]
         ts = [t for t in self.targets if t.report == report and t.metric == metric]
         if not ts:
@@ -55,7 +80,7 @@ class ReconSession:
         rows, f, h = self._measure(spec, params, fit, hold)
         self._cur = dict(spec=spec, report=report, fit=fit, hold=hold, params=params, start=dict(params),
                          history=[Iteration(step=0, params=dict(params), fit_variance=f, holdout_variance=h, per_target=rows)],
-                         tried=set())
+                         tried=set(), tried_moves=set())
         return self.status()
 
     def status(self) -> str:
@@ -70,12 +95,15 @@ class ReconSession:
                  f"Fit variance: {last.fit_variance:.2%} (tolerance {spec.tolerance:.2%})",
                  f"Gap shape: {pattern}" + (f" -> usually {', '.join(RESIDUAL_HINTS[pattern])}" if pattern in RESIDUAL_HINTS else ""),
                  "Per period (fit):"]
-        lines += [f"  {r['as_of']}: gold {r['gold']:,.0f} | computed {r['computed']:,.0f} | {r['rel']:+.2%}" for r in fit_rows]
+        lines += [f"  {r['as_of']}: gold {r['gold']:,.6g} | computed {r['computed']:,.6g} | {r['rel']:+.2%}" for r in fit_rows]
         lines.append("Allowed choices (param [reason]: options):")
         for k, p in spec.params.items():
             opts = ", ".join(o + ("*" if o == c["params"][k] else "") for o in p.options)
             lines.append(f"  {k} [{p.hypothesis}]: {opts}")
         lines.append("Already tried: " + (", ".join(f"{a}={b}" for a, b in sorted(c["tried"])) or "none"))
+        lines.append(f"Compound proposals: try_changes([...], rationale); up to {self.policy.max_move_size} edits atomically.")
+        for name, move in spec.moves.items():
+            lines.append(f"  Declared move {name}: {move.options}; {move.rationale}")
         lines.append("Reasons (hypothesis keys): " + ", ".join(CATALOG))
         lines.append("DONE: fit is within tolerance; close() records the final holdout check." if last.fit_variance <= spec.tolerance else
                      "NEXT: call try_change(param, option, hypothesis, rationale), or close() if nothing defensible is left.")
@@ -83,30 +111,46 @@ class ReconSession:
 
     def try_change(self, param: str, option: str, hypothesis: str, rationale: str, by: str = "agent") -> str:
         c = self._need()
-        spec, last = c["spec"], self._last()
         change = Change(param=param, old=c["params"].get(param, ""), new=option, hypothesis=hypothesis,
                         rationale=rationale, proposed_by=by)
-        if param not in spec.params or option not in spec.params[param].options:
-            reason = "option is not declared in the metric spec (use add_option to propose a new one)"
-            tf, th, rows = last.fit_variance, last.holdout_variance, last.per_target
-            trial = dict(c["params"])
-        else:
-            trial = dict(c["params"], **{param: option})
+        return self._try(change)
+
+    def try_changes(self, changes: list[dict], rationale: str, by: str = "agent") -> str:
+        """Each edit has param, option, hypothesis, and rationale; all commit or none do."""
+        c = self._need()
+        edits = [Change(param=d["param"], old=c["params"].get(d["param"], ""), new=d["option"],
+                        hypothesis=d["hypothesis"], rationale=d["rationale"], proposed_by=by) for d in changes]
+        return self._try(CompoundChange(edits, rationale, by))
+
+    def _try(self, change) -> str:
+        c = self._need()
+        spec, last = c["spec"], self._last()
+        n_acc = accepted_changes(c["history"])
+        reason = validate_proposal(change, spec, c["params"], self.policy, n_acc)
+        tf, th, rows = last.fit_variance, last.holdout_variance, last.per_target
+        trial = dict(c["params"])
+        if not reason:
+            trial.update({edit.param: edit.new for edit in change_items(change)})
             try:
                 rows, tf, th = self._measure(spec, trial, c["fit"], c["hold"])
             except Exception as exc:
                 tf, th, rows = last.fit_variance, last.holdout_variance, last.per_target
                 reason = f"execution failed: {exc}"
             else:
-                n_acc = sum(1 for i in c["history"] if i.accepted)
                 reason = check(change, spec, last.fit_variance, tf, last.holdout_variance, th, n_acc, self.policy, last.per_target, rows)
         c["history"].append(Iteration(step=len(c["history"]), params=trial, fit_variance=tf, holdout_variance=th,
                                       per_target=rows, change=change, accepted=(reason == ""), reject_reason=reason))
-        c["tried"].add((param, option))
+        items = change_items(change)
+        if len(items) == 1:
+            c["tried"].add((items[0].param, items[0].new))
+        c["tried_moves"].add(change_key(change))
         if reason:
             return f"REJECTED: {reason}\n\n" + self.status()
         c["params"] = trial
-        return f"ACCEPTED: {param} {change.old} -> {option} ({hypothesis}). Fit now {tf:.2%}.\n\n" + self.status()
+        c["tried"].clear()
+        c["tried_moves"].clear()
+        description = "; ".join(f"{e.param} {e.old} -> {e.new} ({e.hypothesis})" for e in items)
+        return f"ACCEPTED: {description}. Fit now {tf:.2%}.\n\n" + self.status()
 
     def add_option(self, param: str, name: str, sql_fragment: str, rationale: str, by: str = "agent") -> str:
         """Propose a NEW definitional choice (real data engineering). Logged for human review.

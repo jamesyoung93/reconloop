@@ -32,10 +32,10 @@ class StatedRuleJudge:
                     return Change(param=pname, old=state.params[pname], new=opt, hypothesis=p.hypothesis,
                                   rationale=f"Report states '{hit}'.", proposed_by=self.name)
         # Do not let the fallback undo a choice the report explicitly states.
-        pinned = set(state.tried)
+        pinned = set(state.blocked_options)
         for pname, p in state.spec.params.items():
             cur_words = p.keywords.get(state.params[pname], [])
             if any(re.search(r"\b" + re.escape(w.lower()) + r"\b", rule) for w in cur_words):
                 pinned |= {(pname, o) for o in p.options if o != state.params[pname]}
         from dataclasses import replace
-        return self.fallback.propose(replace(state, tried=pinned), runner)
+        return self.fallback.propose(replace(state, blocked_options=pinned), runner)

@@ -25,6 +25,8 @@ class Target:
     page: str = ""
     split: str = "fit"              # "fit" (used to tune) or "holdout" (used to check)
     confidence: float = 1.0         # extraction confidence, 0..1
+    extraction_method: str = ""     # text / ocr / supplied CSV
+    source_region: str = ""         # JSON [left, top, right, bottom], normalized
 
     def __post_init__(self):
         if not all((self.target_id, self.report, self.metric)):
@@ -51,13 +53,29 @@ class Change:
 
 
 @dataclass
+class CompoundChange:
+    """A bounded set of definition edits evaluated and accepted atomically."""
+    changes: list[Change]
+    rationale: str
+    proposed_by: str = ""
+
+
+def change_items(change: Change | CompoundChange) -> list[Change]:
+    return change.changes if isinstance(change, CompoundChange) else [change]
+
+
+def change_key(change: Change | CompoundChange) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((c.param, c.new) for c in change_items(change)))
+
+
+@dataclass
 class Iteration:
     step: int
     params: dict[str, str]
     fit_variance: float             # mean absolute relative variance on fit targets
     holdout_variance: float | None
     per_target: list[dict[str, Any]]
-    change: Change | None = None
+    change: Change | CompoundChange | None = None
     accepted: bool | None = None
     reject_reason: str = ""
 

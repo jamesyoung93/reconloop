@@ -14,7 +14,7 @@ your-recon-config/         private
 ## 1. Install in Databricks
 
 - Clone this repo into a Git folder, then in a notebook: `%pip install -e /Workspace/Repos/<you>/reconloop`
-- Or build a wheel (`python -m build`), put it in a Unity Catalog volume, and run `%pip install /Volumes/.../reconloop-0.1.0-py3-none-any.whl`
+- Or build a wheel (`python -m build`), put it in a Unity Catalog volume, and run `%pip install /Volumes/.../reconloop-0.2.0-py3-none-any.whl`
 
 ## 2. Write the metric specs
 
@@ -27,6 +27,10 @@ For each metric, start from the definition your current output uses (the `[start
 - Set `tolerance` per metric to what the business would call a match.
 
 ## 3. Build the targets
+
+For rasterized Tableau PDFs, use the configured tile OCR path in `EXTRACTION.md`.
+For several KPIs or multiple input files, see `MULTI_METRIC.md` and the
+`examples/multi_metric` configuration. Missing metric specs now raise an error.
 
 One row per figure: `target_id, report, metric, as_of, value, unit, stated_rule, source_file, page, split, confidence`.
 

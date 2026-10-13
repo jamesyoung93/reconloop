@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from ..metricspec import MetricSpec
-from ..schema import Change, Iteration, Target
+from ..schema import Change, CompoundChange, Iteration, Target
 
 
 @dataclass
@@ -16,11 +16,14 @@ class JudgeState:
     history: list[Iteration]
     tried: set[tuple[str, str]]      # (param, option) pairs already tried
     residual_pattern: str
+    tried_moves: set[tuple[tuple[str, str], ...]] = field(default_factory=set)
+    max_move_size: int = 3
+    blocked_options: set[tuple[str, str]] = field(default_factory=set)
 
 
 class Judge(Protocol):
     name: str
 
-    def propose(self, state: JudgeState, runner) -> Change | None:
+    def propose(self, state: JudgeState, runner) -> Change | CompoundChange | None:
         """Return one change to try, or None if there is nothing defensible left."""
         ...

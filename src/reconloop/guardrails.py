@@ -9,7 +9,7 @@ from math import isfinite
 
 from .hypotheses import CATALOG
 from .metricspec import MetricSpec
-from .schema import Change
+from .schema import Change, CompoundChange, change_items
 
 
 @dataclass
@@ -20,6 +20,51 @@ class Policy:
     min_fit_gain: float = 1e-4         # a change must actually help on the fit set
     max_changes: int = 6               # too many edits = suspicious; stop and ask a human
     min_consistency_gain: float = 0.5  # or: cut the period-to-period spread of the gap by this share
+    max_move_size: int = 3              # maximum parameter edits in one atomic proposal
+
+    def __post_init__(self):
+        if type(self.max_changes) is not int or self.max_changes < 0:
+            raise ValueError("max_changes must be a nonnegative integer")
+        if type(self.max_move_size) is not int or self.max_move_size < 1:
+            raise ValueError("max_move_size must be a positive integer")
+
+
+def validate_proposal(change, spec, current, policy, n_accepted=0) -> str:
+    """Validate the entire proposal before any candidate SQL is executed."""
+    items = change_items(change)
+    if not items or len(items) > policy.max_move_size:
+        return "proposal exceeds max_move_size or contains no edits"
+    if isinstance(change, CompoundChange) and (not isinstance(change.rationale, str) or not change.rationale.strip()):
+        return "compound proposal needs a joint rationale"
+    seen = set()
+    for c in items:
+        if not isinstance(c, Change):
+            return "every compound edit must be a Change"
+        if any(not isinstance(getattr(c, key), str) for key in ("param", "old", "new", "hypothesis", "rationale")):
+            return "proposal fields must be strings"
+        if c.param in seen:
+            return "a compound proposal cannot edit a parameter twice"
+        seen.add(c.param)
+        if c.rationale.startswith("INVALID"):
+            return "judge proposed an option outside the declared space"
+        p = spec.params.get(c.param)
+        if p is None or c.new not in p.options:
+            return "option is not declared in the metric spec"
+        if c.old != current[c.param]:
+            return "proposal uses a stale old value"
+        if c.new == c.old:
+            return "proposal contains an unchanged parameter"
+        if policy.require_named_hypothesis and c.hypothesis not in CATALOG:
+            return f"hypothesis '{c.hypothesis}' is not in the catalog"
+        if c.hypothesis != p.hypothesis:
+            return f"hypothesis '{c.hypothesis}' does not match the parameter's declared reason '{p.hypothesis}'"
+    if n_accepted + len(items) > policy.max_changes:
+        return "too many changes; stop and review by hand"
+    return ""
+
+
+def accepted_changes(history) -> int:
+    return sum(len(change_items(i.change)) for i in history if i.accepted and i.change)
 
 
 def spread(rows: list[dict]) -> float:
@@ -30,21 +75,15 @@ def spread(rows: list[dict]) -> float:
     return pstdev(rels) if len(rels) > 1 else 0.0
 
 
-def check(change: Change, spec: MetricSpec, fit_before: float, fit_after: float,
+def check(change: Change | CompoundChange, spec: MetricSpec, fit_before: float, fit_after: float,
           hold_before: float | None, hold_after: float | None, n_accepted: int, policy: Policy,
           rows_before: list[dict] | None = None, rows_after: list[dict] | None = None) -> str:
     """Return '' if the change is acceptable, otherwise the reason it is rejected."""
     if not isfinite(fit_after) or (hold_after is not None and not isfinite(hold_after)):
         return "relative variance is undefined for a nonzero result against a zero target"
-    if change.rationale.startswith("INVALID"):
-        return "judge proposed an option outside the declared space"
-    if policy.require_named_hypothesis and change.hypothesis not in CATALOG:
-        return f"hypothesis '{change.hypothesis}' is not in the catalog"
-    p = spec.params.get(change.param)
-    if policy.require_declared_option and (p is None or change.new not in p.options):
-        return "option is not declared in the metric spec"
-    if p is not None and change.hypothesis != p.hypothesis:
-        return f"hypothesis '{change.hypothesis}' does not match the parameter's declared reason '{p.hypothesis}'"
+    reason = validate_proposal(change, spec, {c.param: c.old for c in change_items(change)}, policy, n_accepted)
+    if reason:
+        return reason
     if fit_before - fit_after < policy.min_fit_gain:
         # A gap that becomes constant across periods is more explainable than a smaller noisy one
         # (e.g. the true definition plus a restatement). Allow it only if the holdout does not get worse.
@@ -55,6 +94,4 @@ def check(change: Change, spec: MetricSpec, fit_before: float, fit_after: float,
             return "does not reduce the fit variance or make the gap more consistent"
     if hold_before is not None and hold_after is not None and hold_after > hold_before + policy.holdout_tolerance:
         return "worsens the holdout; likely fitting noise"
-    if n_accepted >= policy.max_changes:
-        return "too many changes; stop and review by hand"
     return ""

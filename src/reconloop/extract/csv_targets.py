@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import asdict, fields
 from pathlib import Path
 
 from ..schema import Target
@@ -23,5 +24,13 @@ def load_targets(path: str | Path) -> list[Target]:
                           value=float(str(r["value"]).replace(",", "")), unit=r.get("unit", ""),
                           stated_rule=r.get("stated_rule", ""), source_file=r.get("source_file", ""),
                           page=r.get("page", ""), split=r.get("split", "fit") or "fit",
-                          confidence=float(r.get("confidence") or 1.0)))
+                          confidence=float(r.get("confidence") or 1.0),
+                          extraction_method=r.get("extraction_method", ""), source_region=r.get("source_region", "")))
     return out
+
+
+def write_targets(targets: list[Target], path: str | Path):
+    with open(path, "w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=[f.name for f in fields(Target)])
+        writer.writeheader()
+        writer.writerows(asdict(t) for t in targets)

@@ -51,9 +51,8 @@ def test_invalid_targets_fail_early(bad):
 def test_invalid_target_sets_cannot_reconcile(targets, runner):
     with pytest.raises(ValueError):
         reconcile(spec(), targets, runner, SearchJudge(), log=lambda *a: None)
-    session = ReconSession({"metric": spec()}, targets, runner)
     with pytest.raises(ValueError):
-        session.open("report", "metric")
+        ReconSession({"metric": spec()}, targets, runner)
 
 
 @pytest.mark.parametrize("sql", ["SELECT NULL AS value", "SELECT 1 AS value WHERE FALSE",

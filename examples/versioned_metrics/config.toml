@@ -1,0 +1,138 @@
+# Fictional versioned sales and territory assignments; generate_data.py supplies inputs.
+[runner]
+type = "duckdb"
+[runner.tables]
+facts = "facts.csv"
+assignments = "assignments.csv"
+[targets]
+file = "targets.csv"
+[policy]
+max_changes = 8
+max_move_size = 3
+
+# A ratio alone cannot identify uniform duplicate counts: use the established grain.
+[start.category_share]
+deduplication = "event_category"
+[start.territory_share]
+deduplication = "event_category"
+
+[param_groups.pipeline.data_vintage]
+hypothesis = "data_vintage"
+default = "refreshed"
+[param_groups.pipeline.data_vintage.options]
+published = { type = "latest_partition", source = "facts", columns = ["row_id","event_id","category","account","event_date","product","amount","snapshot_date","cycle"], order_by = ["snapshot_date","cycle"], cutoff_column = "snapshot_date", cutoff = "2026-01-31" }
+refreshed = { type = "latest_partition", source = "facts", columns = ["row_id","event_id","category","account","event_date","product","amount","snapshot_date","cycle"], order_by = ["snapshot_date","cycle"], cutoff_column = "snapshot_date", cutoff = "2026-02-07" }
+[param_groups.pipeline.data_vintage.keywords]
+published = ["publication snapshot"]
+
+[param_groups.pipeline.category_filter]
+hypothesis = "category_filter"
+default = "all"
+[param_groups.pipeline.category_filter.options]
+all = "TRUE"
+selected = "category = 'Category A'"
+[param_groups.pipeline.category_filter.keywords]
+selected = ["category a"]
+all = ["all categories"]
+
+[param_groups.pipeline.deduplication]
+hypothesis = "deduplication"
+default = "raw"
+[param_groups.pipeline.deduplication.options]
+raw = "SELECT * FROM scoped"
+event = { type = "deduplicate", source = "scoped", columns = ["row_id","event_id","category","account","event_date","product","amount","snapshot_date","cycle"], keys = ["event_id"], order_by = ["row_id"] }
+event_category = { type = "deduplicate", source = "scoped", columns = ["row_id","event_id","category","account","event_date","product","amount","snapshot_date","cycle"], keys = ["event_id","category"], order_by = ["row_id"] }
+[param_groups.pipeline.deduplication.keywords]
+event = ["once per event"]
+event_category = ["once per category"]
+
+[param_groups.pipeline.alignment_vintage]
+hypothesis = "alignment_vintage"
+default = "current"
+[param_groups.pipeline.alignment_vintage.options]
+published = "SELECT account, territory, valid_from, valid_to FROM assignments WHERE alignment_date = DATE '2026-01-01'"
+current = "SELECT account, territory, valid_from, valid_to FROM assignments WHERE alignment_date = DATE '2026-02-01'"
+[param_groups.pipeline.alignment_vintage.keywords]
+published = ["publication alignment"]
+
+[param_groups.pipeline.mapping]
+hypothesis = "mapping"
+default = "dated"
+[param_groups.pipeline.mapping.options]
+dated = { type = "alignment", source = "deduped", mapping = "selected_alignment", columns = ["row_id","event_id","category","account","event_date","product","amount","snapshot_date","cycle"], entity_key = "account", event_date = "event_date" }
+
+[param_groups.pipeline.territory_filter]
+hypothesis = "universe"
+default = "all"
+[param_groups.pipeline.territory_filter.options]
+all = "TRUE"
+north = "territory = 'North'"
+[param_groups.pipeline.territory_filter.keywords]
+north = ["north territory"]
+
+[metrics.total_volume]
+param_groups = ["pipeline"]
+unit = "count"
+tolerance = 0.000001
+template = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT SUM(amount) AS value FROM mapped WHERE event_date = DATE '{as_of}' AND {territory_filter}"
+[metrics.total_volume.checks]
+unmatched_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) AS value FROM mapped WHERE territory IS NULL"
+overlapping_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) - COUNT(DISTINCT row_id) AS value FROM mapped"
+
+[metrics.category_volume]
+param_groups = ["pipeline"]
+unit = "count"
+tolerance = 0.000001
+template = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT SUM(amount) AS value FROM mapped WHERE event_date = DATE '{as_of}' AND {territory_filter}"
+[metrics.category_volume.checks]
+unmatched_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) AS value FROM mapped WHERE territory IS NULL"
+overlapping_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) - COUNT(DISTINCT row_id) AS value FROM mapped"
+[metrics.category_volume.moves.category_grain]
+options = { category_filter = "selected", deduplication = "event_category" }
+rationale = "Filter category membership and deduplicate at the matching business grain together."
+
+[metrics.category_share]
+param_groups = ["pipeline"]
+unit = "fraction"
+tolerance = 0.000001
+[metrics.category_share.ratio]
+numerator = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT SUM(CASE WHEN product = 'Focus' THEN amount ELSE 0 END) AS value FROM mapped WHERE event_date = DATE '{as_of}' AND {territory_filter}"
+denominator = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT SUM(amount) AS value FROM mapped WHERE event_date = DATE '{as_of}' AND {territory_filter}"
+[metrics.category_share.checks]
+unmatched_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) AS value FROM mapped WHERE territory IS NULL"
+overlapping_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) - COUNT(DISTINCT row_id) AS value FROM mapped"
+[metrics.category_share.moves.category_grain]
+options = { category_filter = "selected", deduplication = "event_category" }
+rationale = "Filter category membership and deduplicate at the matching business grain together."
+
+[metrics.territory_volume]
+param_groups = ["pipeline"]
+unit = "count"
+tolerance = 0.000001
+template = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT SUM(amount) AS value FROM mapped WHERE event_date = DATE '{as_of}' AND {territory_filter}"
+[metrics.territory_volume.checks]
+unmatched_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) AS value FROM mapped WHERE territory IS NULL"
+overlapping_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) - COUNT(DISTINCT row_id) AS value FROM mapped"
+[metrics.territory_volume.moves.category_grain]
+options = { category_filter = "selected", deduplication = "event_category" }
+rationale = "Filter category membership and deduplicate at the matching business grain together."
+[metrics.territory_volume.moves.territory_definition]
+options = { category_filter = "selected", alignment_vintage = "published", territory_filter = "north" }
+rationale = "The regional population is defined by category eligibility and the dated territory assignment together."
+
+[metrics.territory_share]
+param_groups = ["pipeline"]
+unit = "fraction"
+tolerance = 0.000001
+[metrics.territory_share.ratio]
+numerator = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT SUM(CASE WHEN product = 'Focus' THEN amount ELSE 0 END) AS value FROM mapped WHERE event_date = DATE '{as_of}' AND {territory_filter}"
+denominator = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT SUM(amount) AS value FROM mapped WHERE event_date = DATE '{as_of}' AND {territory_filter}"
+[metrics.territory_share.checks]
+unmatched_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) AS value FROM mapped WHERE territory IS NULL"
+overlapping_assignments = "WITH snapshot AS ({data_vintage}), scoped AS (SELECT * FROM snapshot WHERE {category_filter}), deduped AS ({deduplication}), selected_alignment AS ({alignment_vintage}), mapped AS ({mapping}) SELECT COUNT(*) - COUNT(DISTINCT row_id) AS value FROM mapped"
+[metrics.territory_share.moves.category_grain]
+options = { category_filter = "selected", deduplication = "event_category" }
+rationale = "Filter category membership and deduplicate at the matching business grain together."
+[metrics.territory_share.moves.territory_definition]
+options = { category_filter = "selected", alignment_vintage = "published", territory_filter = "north" }
+rationale = "The regional population is defined by category eligibility and the dated territory assignment together."
