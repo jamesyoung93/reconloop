@@ -1,0 +1,55 @@
+[runner]
+type = "duckdb"
+[runner.tables]
+sales = "sales.csv"
+[targets]
+file = "targets.csv"
+[policy]
+min_fit_gain = 0.000000001
+
+# Shared declarations are copied into each metric, not shared mutable state.
+[param_groups.retail.window]
+hypothesis = "time_window"
+default = "calendar"
+[param_groups.retail.window.options]
+fiscal = "CAST(date AS DATE) BETWEEN DATE '{as_of}' - 6 AND DATE '{as_of}'"
+calendar = "CAST(date AS DATE) BETWEEN DATE '{as_of}' - 5 AND DATE '{as_of}' + 1"
+[param_groups.retail.window.keywords]
+fiscal = ["fiscal"]
+calendar = ["calendar"]
+[param_groups.retail.stores]
+hypothesis = "universe"
+default = "all"
+[param_groups.retail.stores.options]
+comparable = "comparable"
+all = "TRUE"
+[param_groups.retail.stores.keywords]
+comparable = ["comparable"]
+all = ["all stores"]
+
+[metrics.net_sales]
+param_groups = ["retail"]
+unit = "currency"
+tolerance = 0.000001
+template = "SELECT SUM({measure}) AS value FROM sales WHERE {window} AND {stores}"
+[metrics.net_sales.params.measure]
+hypothesis = "measure"
+default = "gross"
+[metrics.net_sales.params.measure.options]
+gross = "gross"
+net = "gross - returns"
+[metrics.net_sales.params.measure.keywords]
+net = ["net"]
+gross = ["gross"]
+
+[metrics.orders]
+param_groups = ["retail"]
+unit = "count"
+tolerance = 0.000001
+template = "SELECT SUM(orders) AS value FROM sales WHERE {window} AND {stores}"
+
+[metrics.return_rate]
+param_groups = ["retail"]
+unit = "fraction"
+tolerance = 0.000001
+template = "SELECT SUM(returns) / SUM(gross) AS value FROM sales WHERE {window} AND {stores}"

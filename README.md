@@ -34,6 +34,37 @@ reconloop score out_rule examples/fictional_retail/answers.json
 
 Open `out_rule/report.md` to see the step-by-step record.
 
+## Rasterized dashboard PDFs
+
+Extract labelled KPI tiles from digital, hybrid or fully rasterized exports with
+text-first OCR fallback. Each figure keeps its page, region and confidence;
+missing, ambiguous or low-confidence matches require review.
+
+```sh
+python -m pip install -e ".[ocr,test-pdf]"
+# Install the Tesseract executable separately and put it on PATH.
+python examples/tableau_raster/generate_pdf.py
+reconloop extract examples/tableau_raster/extract.toml --out out_extract
+```
+
+See [PDF extraction](docs/EXTRACTION.md) for tile coordinates, review crops, dates,
+K/M/B values, percentages and limits. The included PDF is synthetic; real Tableau
+layouts need their own templates. The extractor does not read unlabeled charts.
+
+## Multiple metrics in one run
+
+```sh
+python examples/multi_metric/generate_data.py
+reconloop run examples/multi_metric/config.toml --out out_multi
+reconloop score out_multi examples/multi_metric/answers.json
+```
+
+The example reconciles sales, orders and return rate across five periods. Shared
+parameter groups reduce repeated config, while each metric keeps independent
+decisions and holdout checks. Use `--report` and `--metric` to select a subset,
+or `ReconSession.open_next()` and `progress()` for an agent work queue. See
+[multi-metric workflow](docs/MULTI_METRIC.md).
+
 ## Ways to run it
 
 | Mode | Judge | Use when |
@@ -64,10 +95,12 @@ src/reconloop/
   session.py       step-by-step API for an agent or a person
   judge/           search, stated_rule, llm
   runners/         duckdb (local), spark (Databricks)
-  extract/         csv targets, digital-PDF text (pdfplumber)
+  extract/         CSV and PDF targets, tile OCR, extraction evidence
   record.py        JSON + Markdown records
   scoring.py       score a run against known answers
 examples/fictional_retail/   demo data generator, config, answers
+examples/multi_metric/       three KPIs with shared parameter declarations
+examples/tableau_raster/     synthetic raster PDF and extraction template
 notebooks/                   Databricks notebook for agent-as-judge
 AGENT_GUIDE.md               instructions for the agent
 docs/                        design, adapting to your data, extraction
@@ -75,7 +108,10 @@ docs/                        design, adapting to your data, extraction
 
 ## Status
 
-Version 0.1. One metric per report pair, one parameter change per step, SQL-template metrics. See `docs/DESIGN.md` for the planned extensions.
+Version 0.2. Multiple report/metric pairs per run, one parameter change per step,
+SQL-template metrics, and template-driven PDF/OCR extraction. Shared parameter
+groups reuse declarations; joint optimization across metrics is not implemented.
+See `docs/DESIGN.md` for planned extensions.
 
 `explained_residual` means a pattern suggests possible causes; it does not establish that a restatement occurred. Agent-added options remain subject to human review, even if their numbers match.
 
@@ -95,6 +131,10 @@ python -m pytest -q
 python -m build
 ```
 
-CI runs the test suite and package build on Windows and Linux with Python 3.11 and 3.13. Spark's scalar-result contract is covered with a test double; a live Databricks workspace and external LLM endpoint are not required by the tests.
+CI runs the test suite and package build on Windows and Linux with Python 3.11 and
+3.13. Linux jobs install Tesseract and require the real OCR integration test.
+For those tests locally, install `.[dev,test-pdf]` and the Tesseract executable.
+Spark's scalar-result contract is covered with a test double; a live Databricks
+workspace and external LLM endpoint are not required by the tests.
 
 MIT licence. All demo data is fictional.

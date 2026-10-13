@@ -1,0 +1,33 @@
+# Generate dashboard.pdf first with generate_pdf.py. Coordinates are page fractions.
+[[targets.sources]]
+type = "pdf"
+file = "dashboard.pdf"
+report = "retail_dashboard"
+ocr = "auto"
+dpi = 300
+min_confidence = 0.8
+
+[[targets.sources.patterns]]
+metric = "net_sales"
+label = 'Net Sales'
+bbox = [0.03, 0.30, 0.32, 0.72]
+as_of = 'Week ending (\d{4}-\d{2}-\d{2})'
+date_bbox = [0.0, 0.0, 1.0, 0.25]
+unit = "currency"
+
+[[targets.sources.patterns]]
+metric = "orders"
+label = 'Orders'
+bbox = [0.355, 0.30, 0.645, 0.72]
+as_of = 'Week ending (\d{4}-\d{2}-\d{2})'
+date_bbox = [0.0, 0.0, 1.0, 0.25]
+unit = "count"
+
+[[targets.sources.patterns]]
+metric = "return_rate"
+label = 'Return Rate'
+bbox = [0.68, 0.30, 0.97, 0.72]
+as_of = 'Week ending (\d{4}-\d{2}-\d{2})'
+date_bbox = [0.0, 0.0, 1.0, 0.25]
+unit = "fraction"
+percent = "fraction"

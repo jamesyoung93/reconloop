@@ -19,6 +19,7 @@ from .guardrails import Policy, check
 from .hypotheses import CATALOG, RESIDUAL_HINTS
 from .metricspec import MetricSpec
 from .schema import Change, Iteration, ReconRecord, Target
+from .batch import select_pairs
 
 
 class ReconSession:
@@ -27,6 +28,7 @@ class ReconSession:
         self.specs, self.targets, self.runner = specs, targets, runner
         self.policy = policy or Policy()
         self.start = start or {}
+        self._pairs = [(r, m) for r, m, _ in select_pairs(specs, targets)]
         self.records: list[ReconRecord] = []
         self.spec_changes: list[dict] = []     # new options an agent added; need human review
         self._cur = None
@@ -40,12 +42,35 @@ class ReconSession:
     # ---------- discovery ----------
     def pairs(self) -> list[tuple[str, str]]:
         """All (report, metric) pairs that have targets and a spec."""
-        return sorted({(t.report, t.metric) for t in self.targets if t.metric in self.specs})
+        return list(self._pairs)
+
+    def pending_pairs(self, report: str | None = None) -> list[tuple[str, str]]:
+        """Pairs without a closed record; the active pair stays pending until close()."""
+        if report is not None and report not in {r for r, _ in self._pairs}:
+            raise ValueError(f"unknown report: {report}")
+        closed = {(r.report, r.metric) for r in self.records}
+        return [(r, m) for r, m in self._pairs if (r, m) not in closed and (report is None or r == report)]
+
+    def open_next(self, report: str | None = None) -> str:
+        """Open the next unfinished KPI; refuses to discard an active pair."""
+        if self._cur is not None:
+            raise RuntimeError("close the current pair before opening another")
+        pending = self.pending_pairs(report)
+        return self.open(*pending[0]) if pending else "ALL PAIRS CLOSED"
+
+    def progress(self) -> list[dict]:
+        """Report-wide progress without exposing holdout values."""
+        closed = {(r.report, r.metric): r.status for r in self.records}
+        active = (self._cur["report"], self._cur["spec"].name) if self._cur else None
+        return [dict(report=r, metric=m, status="active" if (r, m) == active else closed.get((r, m), "pending"))
+                for r, m in self._pairs]
 
     # ---------- one reconciliation ----------
     def open(self, report: str, metric: str, start: dict[str, str] | None = None) -> str:
         if self._cur is not None:
             raise RuntimeError("close the current pair before opening another")
+        if any((r.report, r.metric) == (report, metric) for r in self.records):
+            raise ValueError("pair already closed; use a new session to rerun it")
         spec = self.specs[metric]
         ts = [t for t in self.targets if t.report == report and t.metric == metric]
         if not ts:

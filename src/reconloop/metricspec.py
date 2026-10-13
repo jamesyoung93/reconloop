@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from math import isfinite
+from copy import deepcopy
 
 
 @dataclass
@@ -84,7 +85,17 @@ def load_specs(cfg: dict) -> dict[str, MetricSpec]:
     specs = {}
     for name, m in (cfg.get("metrics") or {}).items():
         params = {}
-        for pname, p in (m.get("params") or {}).items():
+        declarations = {}
+        for group in m.get("param_groups", []):
+            if group not in cfg.get("param_groups", {}):
+                raise ValueError(f"{name}: unknown parameter group {group!r}")
+            for pname, declaration in cfg["param_groups"][group].items():
+                if pname in declarations:
+                    raise ValueError(f"{name}: duplicate shared parameter {pname!r}")
+                declarations[pname] = deepcopy(declaration)
+        # A local declaration replaces the complete shared parameter, explicitly.
+        declarations.update(deepcopy(m.get("params") or {}))
+        for pname, p in declarations.items():
             params[pname] = Param(name=pname, hypothesis=p["hypothesis"], default=p["default"],
                                   options=dict(p["options"]), describe=dict(p.get("describe", {})),
                                   keywords={k: list(v) for k, v in (p.get("keywords") or {}).items()})

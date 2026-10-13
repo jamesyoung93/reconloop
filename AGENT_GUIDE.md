@@ -15,6 +15,9 @@ from reconloop.session import ReconSession
 s = ReconSession.from_config("config.toml", runner=SparkRunner(spark))   # or the default runner
 
 s.pairs()                                   # list of (report, metric) to reconcile
+s.pending_pairs()                           # unfinished pairs across metrics
+s.progress()                                # pending / active / final status per pair
+print(s.open_next())                        # open next unfinished KPI (close current one first)
 print(s.open(report, metric))               # start one; prints the status
 print(s.status())                           # current gap, gap shape, stated rule, allowed choices, history
 print(s.try_change(param, option, hypothesis, rationale))   # propose ONE change
@@ -24,6 +27,11 @@ s.report("out/")                            # write the show-your-work record
 ```
 
 ## How to work each pair
+
+For multi-metric dashboards, use `pending_pairs`, `open_next` and `progress` to
+track the complete work queue. Every metric has its own choices and tolerance;
+do not copy accepted changes to another metric without evaluating them there.
+PDF extraction issues must be resolved before opening a session.
 
 1. `open` the pair and read the status carefully.
 2. **Start from the stated rule.** If the report says "fiscal week" and the current definition is calendar, try that first. A report saying what it does is your strongest evidence.

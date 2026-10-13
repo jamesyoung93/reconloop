@@ -43,6 +43,12 @@ def write(records: list[ReconRecord], out_dir: str | Path) -> Path:
 
 def to_markdown(records: list[ReconRecord]) -> str:
     lines = ["# Reconciliation report", ""]
+    for report in sorted({r.report for r in records}):
+        members = [r for r in records if r.report == report]
+        counts = {status: sum(r.status == status for r in members)
+                  for status in ("reconciled", "explained_residual", "unresolved")}
+        lines.append(f"**{report}**: {len(members)} metrics; " + ", ".join(f"{n} {s}" for s, n in counts.items()) + ".")
+    lines.append("")
     lines += ["| Report | Metric | Status | Fit variance | Holdout | Changes |", "|---|---|---|---|---|---|"]
     for r in records:
         n = sum(1 for i in r.iterations if i.accepted)

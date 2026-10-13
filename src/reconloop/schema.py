@@ -25,6 +25,8 @@ class Target:
     page: str = ""
     split: str = "fit"              # "fit" (used to tune) or "holdout" (used to check)
     confidence: float = 1.0         # extraction confidence, 0..1
+    extraction_method: str = ""     # text / ocr / supplied CSV
+    source_region: str = ""         # JSON [left, top, right, bottom], normalized
 
     def __post_init__(self):
         if not all((self.target_id, self.report, self.metric)):

@@ -11,4 +11,4 @@ from .config import load_config, run_config
 
 __all__ = ["Target", "Change", "Iteration", "ReconRecord", "Residual", "MetricSpec", "Param", "load_specs",
            "reconcile", "Policy", "load_config", "run_config"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

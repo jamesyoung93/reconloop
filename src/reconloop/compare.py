@@ -38,7 +38,10 @@ def evaluate(runner, spec, params: dict[str, str], targets: list[Target]) -> lis
         sql = spec.render(params, t.as_of)
         v = runner.run(sql)
         rows.append({"target_id": t.target_id, "as_of": t.as_of, "split": t.split,
-                     "gold": t.value, "computed": v, "rel": rel_var(v, t.value)})
+                     "gold": t.value, "computed": v, "rel": rel_var(v, t.value),
+                     "unit": t.unit, "source_file": t.source_file, "page": t.page,
+                     "confidence": t.confidence, "extraction_method": t.extraction_method,
+                     "source_region": t.source_region})
     return rows
 
 

@@ -34,3 +34,9 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+# generated dashboard demonstrations
+examples/multi_metric/sales.csv
+examples/multi_metric/targets.csv
+examples/multi_metric/answers.json
+examples/tableau_raster/*.pdf
+examples/tableau_raster/*.png
