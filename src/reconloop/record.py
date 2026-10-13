@@ -31,7 +31,8 @@ def _json_safe(value):
 
 
 def write(records: list[ReconRecord], out_dir: str | Path) -> Path:
-    out = Path(out_dir)
+    from .storage import local_path
+    out = local_path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     for r in records:
         (out / record_filename(r.report, r.metric)).write_text(
@@ -49,6 +50,15 @@ def to_markdown(records: list[ReconRecord]) -> str:
                   for status in ("reconciled", "explained_residual", "unresolved")}
         lines.append(f"**{report}**: {len(members)} metrics; " + ", ".join(f"{n} {s}" for s, n in counts.items()) + ".")
     lines.append("")
+    coupled = {(r.report, r.coupling["group"]): r.coupling for r in records if r.coupling}
+    for (report, name), audit in coupled.items():
+        lines += [f"## Coupled group: {report} / {name}", "",
+                  f"Search: {len(audit['fit_candidates'])} fit candidates; {audit['selection']}.",
+                  f"Joint proposal accepted: {audit['accepted']}. {audit['reject_reason']}", "",
+                  "| Identity | Period | Split | Left | Converted right | Passed |", "|---|---|---|---|---|---|"]
+        for e in audit["final_identities"]:
+            lines.append(f"| {e['name']} | {e['as_of']} | {e['split']} | {e['left_value']:.8g} | {e['right_value']:.8g} | {e['passed']} |")
+        lines.append("")
     lines += ["| Report | Metric | Status | Fit variance | Holdout | Changes |", "|---|---|---|---|---|---|"]
     for r in records:
         n = sum(1 for i in r.iterations if i.accepted)
@@ -61,7 +71,9 @@ def to_markdown(records: list[ReconRecord]) -> str:
                   "|---|---|---|---|---|---|"]
         for i in r.iterations:
             if i.change is None:
-                lines.append(f"| {i.step} | start | – | {i.fit_variance:.2%} | {fmt(i.holdout_variance)} | – |")
+                label = "start" if i.step == 0 else "unchanged member in joint proposal"
+                outcome = "–" if i.step == 0 else ("accepted" if i.accepted else f"rejected: {i.reject_reason}")
+                lines.append(f"| {i.step} | {label} | – | {i.fit_variance:.2%} | {fmt(i.holdout_variance)} | {outcome} |")
                 continue
             outcome = "accepted" if i.accepted else f"rejected: {i.reject_reason}"
             changes = "; ".join(f"{c.param}: {c.old} → {c.new}" for c in change_items(i.change))
@@ -71,6 +83,28 @@ def to_markdown(records: list[ReconRecord]) -> str:
             lines.append(f"| {i.step} | {changes} | {reasons} | "
                          f"{i.fit_variance:.2%} | {fmt(i.holdout_variance)} | {outcome} |")
         final = next(i for i in reversed(r.iterations) if i.accepted is not False)
+        if r.lifecycle:
+            lines += ["", "Lifecycle:"]
+            for event in r.lifecycle:
+                lines.append(f"- {event['action']} at {event['at']}: {event.get('reason', '')}")
+        if r.diagnostics:
+            d = r.diagnostics
+            ratio = d["fit_ratio"]
+            lines += ["", "Post-close diagnostics:", f"- Fit ratio pattern: {ratio['status']} ({ratio['periods']} periods)."]
+            if "computed_over_target" in ratio:
+                lines.append(f"- Computed / target: {ratio['computed_over_target']:.8g}; coefficient of variation: {ratio['coefficient_of_variation']:.2%}.")
+            lines.append(f"- {ratio['interpretation']}")
+            if "holdout_factor_check" in d:
+                lines.append(f"- Holdout supports the fit-derived factor: {d['holdout_factor_check']['consistent']}.")
+            if "vintages" in d:
+                lines.append(f"- Declared vintage comparison: {sum(e['status'] == 'revised' for e in d['vintages'])} of {len(d['vintages'])} periods revised.")
+            if "vintage_error" in d:
+                lines.append(f"- Vintage diagnostic failed: {d['vintage_error']}")
+            if "breakdown_error" in d:
+                lines.append(f"- Breakdown diagnostic failed: {d['breakdown_error']}")
+            for part in d.get("breakdowns", []):
+                ratio = part["fit_ratio"]
+                lines.append(f"- {part['option']} vs {part['reference_metric']}: {ratio['status']}; computed / target {ratio.get('computed_over_target', 'unavailable')}.")
         component_rows = [row for row in final.per_target if row.get("components")]
         if component_rows:
             lines += ["", "| Period | Split | Numerator | Denominator | Scale | Ratio |",

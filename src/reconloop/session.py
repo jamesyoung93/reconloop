@@ -32,12 +32,18 @@ class ReconSession:
         self.records: list[ReconRecord] = []
         self.spec_changes: list[dict] = []     # new options an agent added; need human review
         self._cur = None
+        self._deferred = {}
+        self.diagnostic_config = {}
 
     @classmethod
     def from_config(cls, path: str, runner=None):
         from .config import load_config, build_runner
         cfg, specs, targets = load_config(path)
-        return cls(specs, targets, runner or build_runner(cfg, path), Policy(**cfg.get("policy", {})), cfg.get("start"))
+        if cfg.get("coupled"):
+            raise ValueError("coupled constraints require run_config/reconcile_coupled; independent interactive edits cannot preserve group identities")
+        session = cls(specs, targets, runner or build_runner(cfg, path), Policy(**cfg.get("policy", {})), cfg.get("start"))
+        session.diagnostic_config = cfg.get("diagnostics", {})
+        return session
 
     # ---------- discovery ----------
     def pairs(self) -> list[tuple[str, str]]:
@@ -48,7 +54,7 @@ class ReconSession:
         """Pairs without a closed record; the active pair stays pending until close()."""
         if report is not None and report not in {r for r, _ in self._pairs}:
             raise ValueError(f"unknown report: {report}")
-        closed = {(r.report, r.metric) for r in self.records}
+        closed = {(r.report, r.metric) for r in self.records} | self._deferred.keys()
         return [(r, m) for r, m in self._pairs if (r, m) not in closed and (report is None or r == report)]
 
     def open_next(self, report: str | None = None) -> str:
@@ -56,14 +62,69 @@ class ReconSession:
         if self._cur is not None:
             raise RuntimeError("close the current pair before opening another")
         pending = self.pending_pairs(report)
-        return self.open(*pending[0]) if pending else "ALL PAIRS CLOSED"
+        if pending:
+            return self.open(*pending[0])
+        return "NO PENDING PAIRS; DEFERRED PAIRS REMAIN" if self.deferred_pairs(report) else "ALL PAIRS CLOSED"
 
     def progress(self) -> list[dict]:
         """Report-wide progress without exposing holdout values."""
         closed = {(r.report, r.metric): r.status for r in self.records}
         active = (self._cur["report"], self._cur["spec"].name) if self._cur else None
-        return [dict(report=r, metric=m, status="active" if (r, m) == active else closed.get((r, m), "pending"))
+        return [dict(report=r, metric=m, status="active" if (r, m) == active else
+                     "deferred" if (r, m) in self._deferred else closed.get((r, m), "pending"),
+                     **({"reason": self._deferred[(r, m)]["reason"], "depends_on": self._deferred[(r, m)]["depends_on"]}
+                        if (r, m) in self._deferred else {}))
                 for r, m in self._pairs]
+
+    def deferred_pairs(self, report=None):
+        return [pair for pair in self._pairs if pair in self._deferred and (report is None or pair[0] == report)]
+
+    def defer(self, reason, *, depends_on=()):
+        """Park an active pair without losing accepted/rejected steps or edit budgets."""
+        from datetime import datetime, timezone
+        c = self._need()
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("deferral requires a nonempty reason")
+        pair = (c["report"], c["spec"].name)
+        dependencies = [tuple(p) for p in depends_on]
+        if len(set(dependencies)) != len(dependencies) or any(p not in self._pairs or p == pair for p in dependencies):
+            raise ValueError("dependencies must be distinct other configured pairs")
+        graph = {p: state["depends_on"] for p, state in self._deferred.items()} | {pair: dependencies}
+        def cycle(node, trail):
+            if node in trail:
+                return True
+            return any(cycle(child, trail | {node}) for child in graph.get(node, []))
+        if cycle(pair, set()):
+            raise ValueError("deferral dependencies cannot form a cycle")
+        c.setdefault("lifecycle", []).append(dict(action="deferred", reason=reason, depends_on=dependencies,
+                                                  at=datetime.now(timezone.utc).isoformat()))
+        self._deferred[pair] = dict(state=c, reason=reason, depends_on=dependencies)
+        self._cur = None
+        return f"DEFERRED {pair[0]} / {pair[1]}: {reason}"
+
+    def resume(self, report, metric):
+        from datetime import datetime, timezone
+        if self._cur is not None:
+            raise RuntimeError("close or defer the active pair before resuming another")
+        pair = (report, metric)
+        parked = self._deferred.get(pair)
+        if parked is None:
+            raise ValueError("pair is not deferred")
+        resolved = {(r.report, r.metric) for r in self.records if r.status == "reconciled"}
+        if set(parked["depends_on"]) - resolved:
+            raise RuntimeError("dependent pairs must reconcile before this pair can resume")
+        self._cur = self._deferred.pop(pair)["state"]
+        self._cur.setdefault("lifecycle", []).append(dict(action="resumed", at=datetime.now(timezone.utc).isoformat()))
+        return self.status()
+
+    def checkpoint(self, path, *, source_version):
+        from .checkpoint import save_session
+        return save_session(self, path, source_version=source_version)
+
+    def restore(self, path, *, source_version):
+        from .checkpoint import restore_session
+        restore_session(self, path, source_version=source_version)
+        return self.progress()
 
     # ---------- one reconciliation ----------
     def open(self, report: str, metric: str, start: dict[str, str] | None = None) -> str:
@@ -71,6 +132,8 @@ class ReconSession:
             raise RuntimeError("close the current pair before opening another")
         if any((r.report, r.metric) == (report, metric) for r in self.records):
             raise ValueError("pair already closed; use a new session to rerun it")
+        if (report, metric) in self._deferred:
+            raise ValueError("pair is deferred; use resume to preserve its progress")
         spec = self.specs[metric]
         ts = [t for t in self.targets if t.report == report and t.metric == metric]
         if not ts:
@@ -176,17 +239,24 @@ class ReconSession:
             residual.note += " Uses agent-added option(s) awaiting review: " + ", ".join(f"{s['param']}={s['option']}" for s in new_opts) + "."
         rec = ReconRecord(report=c["report"], metric=spec.name, start_params=c["start"], final_params=dict(c["params"]),
                           final_query=spec.render(c["params"], c["fit"][0].as_of), tolerance=spec.tolerance, status=status,
-                          iterations=c["history"], residual=residual)
+                          iterations=c["history"], residual=residual, lifecycle=c.get("lifecycle", []))
+        from .diagnostics import post_close
+        post_close(rec, spec, c["fit"] + c["hold"], self.runner, self.diagnostic_config, reference_targets=self.targets)
         self.records.append(rec)
         self._cur = None
         return rec
 
     def report(self, out_dir: str = "reconloop_out") -> str:
         from .record import write
-        import json, os
+        import json
         md = write(self.records, out_dir)
+        (md.parent / "session_progress.json").write_text(json.dumps(self.progress(), indent=2), encoding="utf-8")
+        pending, deferred = len(self.pending_pairs()), len(self._deferred)
+        if pending or deferred:
+            with md.open("a", encoding="utf-8") as stream:
+                stream.write(f"\nSession queue: {pending} pending/active, {deferred} deferred. Records above cover closed pairs only.\n")
         if self.spec_changes:
-            with open(os.path.join(out_dir, "spec_changes_for_review.json"), "w", encoding="utf-8") as f:
+            with (md.parent / "spec_changes_for_review.json").open("w", encoding="utf-8") as f:
                 json.dump(self.spec_changes, f, indent=2)
         return str(md)
 

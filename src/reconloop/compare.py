@@ -41,6 +41,7 @@ def evaluate(runner, spec, params: dict[str, str], targets: list[Target]) -> lis
                      "unit": t.unit, "source_file": t.source_file, "page": t.page,
                      "confidence": t.confidence, "extraction_method": t.extraction_method,
                      "source_region": t.source_region,
+                     "value_lower": t.value_lower, "value_upper": t.value_upper,
                      **({"components": components} if components else {})})
     return rows
 

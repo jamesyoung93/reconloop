@@ -34,6 +34,19 @@ reconloop score out_rule examples/fictional_retail/answers.json
 
 Open `out_rule/report.md` to see the step-by-step record.
 
+## Prepare a run
+
+```sh
+python examples/setup_workflow/generate_data.py --out private/setup
+reconloop discover private/setup/schema.json private/setup/targets.csv --table facts --dictionary private/setup/dictionary.csv --out private/setup-draft
+```
+
+Schema and CSV/XLSX dictionary metadata produce a configuration draft with candidate
+mappings and explicit review questions. Draft configs cannot execute until reviewed
+and approved. `extract_pdf_auto` can locate requested figures across PDF pages through
+a caller-owned vision callback, retaining source evidence and requiring independent
+review. See [setup workflow](docs/SETUP_WORKFLOW.md).
+
 ## Rasterized dashboard PDFs
 
 Extract labelled KPI tiles from digital, hybrid or fully rasterized exports with
@@ -49,7 +62,10 @@ reconloop extract examples/tableau_raster/extract.toml --out out_extract
 
 See [PDF extraction](docs/EXTRACTION.md) for tile coordinates, review crops, dates,
 K/M/B values, percentages and limits. The included PDF is synthetic; real Tableau
-layouts need their own templates. The extractor does not read unlabeled charts.
+layouts need their own templates. Solid-color bars can also be measured with two
+verified linear-axis ticks and explicit regions. These estimates retain uncertainty
+bounds and require independent review before becoming targets; automatic chart
+interpretation is not supported. See the [calibrated bar example](examples/calibrated_bars).
 
 ## Multiple metrics in one run
 
@@ -64,6 +80,22 @@ parameter groups reduce repeated config, while each metric keeps independent
 decisions and holdout checks. Use `--report` and `--metric` to select a subset,
 or `ReconSession.open_next()` and `progress()` for an agent work queue. See
 [multi-metric workflow](docs/MULTI_METRIC.md).
+
+Independent metrics can run with `--parallel --max-workers 4`. Config batches,
+async completion callbacks, bounded fit precomputation and an optional source-versioned
+scalar cache are covered in [execution](docs/EXECUTION.md).
+
+For related metrics, declare a coupled group to enforce identities such as
+`share.numerator = category_volume.value`, or require matching parameter choices.
+The bounded solver ranks candidates on fit periods and checks one selected
+candidate against holdouts. It rejects the group if any final member or identity
+fails. See [coupled reconciliation](docs/COUPLED_METRICS.md).
+
+```sh
+python examples/coupled_metrics/generate_data.py
+reconloop run examples/coupled_metrics/config.toml --out out_coupled
+reconloop score out_coupled examples/coupled_metrics/answers.json
+```
 
 ## Versioned data, shares and territories
 
@@ -86,11 +118,30 @@ external scheduler, with a JSON manifest and exit codes for success, review, or
 failure. It does not install a scheduler. Difficult PDF crops can use a caller's
 vision endpoint with [mandatory transcription review](docs/EXTRACTION.md#vision-assisted-transcription).
 
+## Deployment checks and shared targets
+
+```sh
+reconloop doctor --ocr
+reconloop publish-targets private/extraction private/targets --id reviewed-2026-01
+```
+
+The diagnostic renders a PDF and checks the actual OCR engine. Reviewed extraction
+packages can be published as immutable, hash-verified bundles on local storage or
+mounted Unity Catalog volumes. The repository includes a pinned-package cluster
+init script and a readiness notebook. See [deployment and storage](docs/DEPLOYMENT.md)
+for runtime requirements, permissions and checks to run on the actual cluster.
+
+Sessions support `defer`, `resume` and private JSON checkpoints without resetting
+their history or change budget. Closed records include stable-ratio diagnostics;
+configured vintage and category breakdowns can investigate residuals while keeping
+the final definition fixed. See [lifecycle and diagnostics](docs/LIFECYCLE_DIAGNOSTICS.md).
+
 ## Ways to run it
 
 | Mode | Judge | Use when |
 |---|---|---|
 | `reconloop run` | `SearchJudge` or `StatedRuleJudge` | Batch runs, baselines, CI |
+| `reconloop run` with `[coupled]` groups | Bounded deterministic joint search | Explicit identities and shared choices within a report |
 | `reconcile(..., judge=LLMJudge(complete))` | Any model behind a `complete(prompt) -> str` function | You have an API or serving endpoint |
 | `ReconSession` in a notebook | An agent (Genie or Assistant, Copilot) or a person | Interactive work. The agent follows `AGENT_GUIDE.md` and drives `try_change(...)` |
 
@@ -112,6 +163,13 @@ src/reconloop/
   metricspec.py    SQL template + declared options per parameter
   sql.py           snapshot, deduplication and dated assignment builders
   revisions.py     comparisons between declared source vintages
+  coupled.py       fit-only joint search with cross-metric constraints
+  storage.py       immutable verified target bundles and mounted paths
+  doctor.py        dependency, PDF rendering and OCR readiness checks
+  discovery.py     metadata mappings and review-required config drafts
+  diagnostics.py   post-close factors, components and declared breakdowns
+  checkpoint.py    resumable session state bound to inputs and policy
+  execution.py     bounded parallel dispatch and fit precomputation
   jobs.py          isolated batch runs and scheduler manifests
   compare.py       variance and residual shape (level shift / drift / noisy)
   guardrails.py    acceptance rules
@@ -126,6 +184,9 @@ examples/fictional_retail/   demo data generator, config, answers
 examples/multi_metric/       three KPIs with shared parameter declarations
 examples/tableau_raster/     synthetic raster PDF and extraction template
 examples/versioned_metrics/ five KPIs with snapshots, shares and territories
+examples/coupled_metrics/   volumes and share constrained together
+examples/calibrated_bars/   synthetic chart and explicit linear calibration
+examples/setup_workflow/   fictional schema, dictionary and target generator
 notebooks/                   Databricks notebook for agent-as-judge
 AGENT_GUIDE.md               instructions for the agent
 docs/                        design, adapting to your data, extraction
@@ -133,10 +194,16 @@ docs/                        design, adapting to your data, extraction
 
 ## Status
 
-Version 0.3. Multiple report/metric pairs, bounded compound changes, audited ratio
-components, versioned source and alignment options, revision diagnostics, batch
-manifests, and PDF/OCR extraction with an optional reviewed vision callback.
-Shared parameter groups reuse declarations; joint optimization across metrics is not implemented.
+Version 0.5.0 adds reviewed report discovery and configuration drafts, deferred
+sessions with checkpoints, post-close diagnostics, bounded parallel execution,
+async completions, fit precomputation and a versioned scalar cache. It also includes
+coupled reconciliation, reviewed bar-chart estimates, verified target bundles and
+cluster readiness checks.
+Coupled groups require aligned periods and declared identities; interactive
+single-metric sessions reject coupled configurations. Chart measurement requires
+explicit calibration and review. Live cluster installation, scheduling and volume
+access still need validation in the deployment environment. Real-report model
+extraction accuracy is not benchmarked.
 See `docs/DESIGN.md` for planned extensions.
 
 `explained_residual` means a pattern suggests possible causes; it does not establish that a restatement occurred. Agent-added options remain subject to human review, even if their numbers match.

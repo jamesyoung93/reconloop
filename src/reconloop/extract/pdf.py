@@ -70,7 +70,8 @@ class ExtractionResult:
 
     def write(self, out_dir: str | Path):
         from .csv_targets import write_targets
-        out = Path(out_dir)
+        from ..storage import local_path
+        out = local_path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
         write_targets(self.targets, out / "targets.csv")
         (out / "extraction.json").write_text(json.dumps({

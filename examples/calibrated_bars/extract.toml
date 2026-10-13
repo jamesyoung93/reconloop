@@ -1,0 +1,32 @@
+# Explicit calibration for generate_pdf.py's synthetic raster chart.
+# CLI extraction creates review evidence, not trusted targets.
+[[targets.sources]]
+type = "bar_chart"
+file = "dashboard.pdf"
+report = "operations_chart"
+dpi = 200
+
+[[targets.sources.patterns]]
+metric = "volume"
+as_of = "2026-01-07"
+unit = "count"
+bbox = [0.25, 0.16, 0.32, 0.85]
+color = [40, 110, 190]
+axis = { positions = [0.8153846153846154, 0.2], values = [0, 100], baseline = 0, scale = "linear" }
+
+[[targets.sources.patterns]]
+metric = "volume"
+as_of = "2026-01-14"
+unit = "count"
+bbox = [0.48, 0.16, 0.55, 0.85]
+color = [40, 110, 190]
+axis = { positions = [0.8153846153846154, 0.2], values = [0, 100], baseline = 0, scale = "linear" }
+
+[[targets.sources.patterns]]
+metric = "volume"
+as_of = "2026-01-21"
+unit = "count"
+split = "holdout"
+bbox = [0.71, 0.16, 0.78, 0.85]
+color = [40, 110, 190]
+axis = { positions = [0.8153846153846154, 0.2], values = [0, 100], baseline = 0, scale = "linear" }

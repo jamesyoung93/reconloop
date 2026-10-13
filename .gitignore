@@ -43,3 +43,7 @@ examples/tableau_raster/*.png
 examples/versioned_metrics/*.csv
 examples/versioned_metrics/answers.json
 reconloop_jobs/
+examples/calibrated_bars/*.pdf
+examples/calibrated_bars/*.png
+examples/coupled_metrics/*.csv
+examples/coupled_metrics/answers.json

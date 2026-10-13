@@ -84,6 +84,9 @@ class LLMJudge:
     def propose(self, state: JudgeState, runner) -> Change | CompoundChange | None:
         self.last_prompt = self.build_prompt(state)
         self.last_reply = self.complete(self.last_prompt)
+        return self._parse_reply(state)
+
+    def _parse_reply(self, state):
         m = re.search(r"\{.*\}", self.last_reply, re.S)
         if not m:
             return None
@@ -116,3 +119,19 @@ class LLMJudge:
         return Change(param=d["param"], old=state.params[d["param"]], new=d["value"],
                       hypothesis=d.get("hypothesis", p.hypothesis), rationale=d.get("rationale", ""),
                       proposed_by=self.name)
+
+
+class AsyncLLMJudge(LLMJudge):
+    """An awaitable completion callback; independent worker loops overlap SQL and model I/O."""
+    async def propose_async(self, state, runner):
+        self.last_prompt = self.build_prompt(state)
+        self.last_reply = await self.complete(self.last_prompt)
+        return self._parse_reply(state)
+
+    def propose(self, state, runner):
+        import asyncio
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.propose_async(state, runner))
+        raise RuntimeError("use await propose_async, or run_config in a worker thread, inside an active event loop")

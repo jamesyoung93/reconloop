@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e ".[dev,test-pdf]" build
+      - run: python -m pip install -e ".[dev,test-pdf,discovery]" build
       - name: Install OCR engine
         if: runner.os == 'Linux'
         run: |
@@ -29,4 +29,9 @@ jobs:
       - run: python -m pytest -q
         env:
           RECONLOOP_REQUIRE_OCR: ${{ runner.os == 'Linux' && '1' || '0' }}
+      - name: Check cluster setup script and OCR diagnostics
+        if: runner.os == 'Linux'
+        run: |
+          bash -n deploy/install-ocr.sh
+          python -m reconloop.cli doctor --ocr
       - run: python -m build

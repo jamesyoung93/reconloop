@@ -10,6 +10,8 @@ REQUIRED = {"target_id", "report", "metric", "as_of", "value"}
 
 
 def load_targets(path: str | Path) -> list[Target]:
+    from ..storage import local_path
+    path = local_path(path)
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         missing = REQUIRED - set(reader.fieldnames or [])
@@ -25,11 +27,15 @@ def load_targets(path: str | Path) -> list[Target]:
                           stated_rule=r.get("stated_rule", ""), source_file=r.get("source_file", ""),
                           page=r.get("page", ""), split=r.get("split", "fit") or "fit",
                           confidence=float(r.get("confidence") or 1.0),
-                          extraction_method=r.get("extraction_method", ""), source_region=r.get("source_region", "")))
+                          extraction_method=r.get("extraction_method", ""), source_region=r.get("source_region", ""),
+                          value_lower=float(r["value_lower"]) if r.get("value_lower") else None,
+                          value_upper=float(r["value_upper"]) if r.get("value_upper") else None))
     return out
 
 
 def write_targets(targets: list[Target], path: str | Path):
+    from ..storage import local_path
+    path = local_path(path)
     with open(path, "w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=[f.name for f in fields(Target)])
         writer.writeheader()

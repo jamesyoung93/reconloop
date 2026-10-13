@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reconloop"
-version = "0.3.0"
+version = "0.5.0"
 description = "Reconcile a rebuilt metric against trusted reports, with an AI or rule-based judge and a show-your-work record."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,7 @@ dependencies = ["duckdb>=0.10"]
 pdf = ["pdfplumber>=0.11"]
 ocr = ["pdfplumber>=0.11", "pytesseract>=0.3.13", "Pillow>=10"]
 dev = ["pytest>=7"]
+discovery = ["openpyxl>=3.1"]
 test-pdf = ["reportlab>=4", "pdfplumber>=0.11", "pytesseract>=0.3.13", "Pillow>=10"]
 
 [project.scripts]
