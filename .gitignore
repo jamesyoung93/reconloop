@@ -40,3 +40,6 @@ examples/multi_metric/targets.csv
 examples/multi_metric/answers.json
 examples/tableau_raster/*.pdf
 examples/tableau_raster/*.png
+examples/versioned_metrics/*.csv
+examples/versioned_metrics/answers.json
+reconloop_jobs/

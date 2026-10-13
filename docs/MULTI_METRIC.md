@@ -57,8 +57,9 @@ shared parameter. Duplicate names across selected groups are an error.
 `[start.<metric>]` remains metric-specific.
 
 Shared declarations do not force the same final choice across metrics. Coupled
-optimization, cross-metric identities and multi-parameter proposals remain future
-work. Review conflicting final choices in the report.
+optimization and cross-metric identities remain future work. Bounded compound
+proposals within one metric are supported; see [versioned metrics](VERSIONED_METRICS.md).
+Review conflicting final choices in the report.
 
 ## Agent work queue
 

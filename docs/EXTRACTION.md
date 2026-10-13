@@ -121,7 +121,41 @@ sources can be combined with repeated `[[targets.sources]]` entries. The origina
 Keep real PDFs, crops, diagnostics and business configs outside the public repo.
 These files contain source figures, including holdouts.
 
-## Limits
+## Vision-assisted transcription
+
+For difficult rendered tiles or table cells, `extract_pdf_vision` accepts a
+provider-neutral `complete(png_bytes, prompt) -> JSON string` callback. Use the
+same page/region/label/date patterns as OCR. The response contract is
+`{"text": "Label: 12.5%\\nWeek ending 2026-01-08"}`. It requests visible text only;
+it must not estimate unlabeled chart values. No provider is called by default.
+
+```python
+from reconloop.extract.vision import extract_pdf_vision
+
+pending = extract_pdf_vision(
+    "dashboard.pdf", "weekly_dashboard", patterns,
+    complete=my_vision_callback, strict=False,
+    evidence_dir="private/vision/crops",
+)
+pending.write("private/vision")
+```
+
+Without a review callback this saves candidate transcripts, image hashes, crops
+and review issues, with **no trusted targets**. Supply
+`review(image, transcript) -> bool` only when an independent reviewer or approved
+transcription store can validate that exact image/transcript. The callback must
+return `True`; a model-provided confidence or `reviewed` field is ignored.
+Re-run with the reviewed transcription, call `result.require_complete()`, then
+write reviewed targets for reconciliation. Region ambiguity, invalid values and
+date validation still apply. Reviewed targets record `vision_reviewed`; their
+confidence 1.0 is a binary review marker, not a calibrated accuracy probability.
+
+This API uses caller-supplied callbacks rather than configuring credentials or
+endpoints in public TOML. Apply provider timeouts and approved data handling in
+the callback. Tests cover parsing, rendering and the review boundary with a fake
+provider; live vision accuracy on real exports has not been benchmarked.
+
+## Remaining extraction limits
 
 This is template-driven OCR, not automatic dashboard understanding. Tiny fonts,
 overlapping labels, rotated tiles, international number formats and unlabeled

@@ -11,7 +11,7 @@ The obvious automation is tempting and wrong: let an agent tweak the query until
 1. **Targets.** Figures from the trusted report, each with an as-of date, the rule the report states, and a page reference. Some periods are marked holdout.
 2. **Spec.** The metric as a SQL template with declared options per parameter. Each parameter is tied to one named reason from the hypothesis catalog. The options are the only moves allowed.
 3. **Run and compare.** Code renders the SQL per period, runs it, and computes the relative variance per period. No model computes anything.
-4. **Judge.** Its state contains fit periods, the stated rule, the gap shape and fit-only history, and it proposes one change with a named reason and a rationale. Holdout values are omitted from that state, but Python judges still run in the same process with access to the runner. This is not a sandbox.
+4. **Judge.** Its state contains fit periods, the stated rule, the gap shape and fit-only history, and it proposes a single or bounded compound change with named reasons and a rationale. Holdout values are omitted from that state, but Python judges still run in the same process with access to the runner. This is not a sandbox.
 5. **Guardrails.** A change is accepted only if:
    - it names a catalog reason that matches the parameter's declared reason
    - it uses a declared option
@@ -39,18 +39,21 @@ The obvious automation is tempting and wrong: let an agent tweak the query until
 
 ## Judges
 
-- **SearchJudge:** greedy, tries each single change and keeps the largest fit reduction. It's a baseline, and it shows the trap.
+- **SearchJudge:** tries single changes and explicitly declared compound moves, keeping the largest fit reduction. It's a baseline, and it shows the trap.
 - **StatedRuleJudge:** follows keywords in the stated rule, pins those choices, and searches the rest. Cheap and strong when reports state their rules.
-- **LLMJudge:** a model reads the same state and proposes one change as JSON. Plug in any `complete(prompt) -> str`.
-- **Agent in a session:** Genie, the Assistant, Copilot or a person calls `try_change` directly and reads `status()`. Same guardrails.
+- **LLMJudge:** a model reads the same state and proposes a single or compound change as JSON. Plug in any `complete(prompt) -> str`.
+- **Agent in a session:** an assistant or a person calls `try_change` or `try_changes` directly and reads `status()`. Same guardrails.
 
 Use `scoring.py` with an eval set of known answers to check that a model judge beats the stated-rule baseline. If it doesn't, use the baseline.
 
 ## Planned extensions
 
-- **Multi-parameter moves:** some definitions only make sense together (e.g. a basket change plus a universe change).
 - **Per-target tolerance and weighting:** big and small figures shouldn't count equally.
 - **Restatement model:** estimate a restatement factor explicitly and report it, instead of only classifying the residual.
 - **Notebook and pipeline metrics:** let a metric be a Python function instead of a SQL template, with the same option-space contract.
-- **Evidence crops:** save the page region each target came from, so the record links to the image.
 - **Cross-report consistency:** when two reports should share a definition, prefer judges that keep them consistent.
+
+Compound moves, OCR evidence crops, ratio components and explicit vintage comparisons
+are implemented. Vintage comparison detects changed results while holding other
+choices fixed; it does not estimate a restatement factor or prove why data changed.
+See [versioned metrics](VERSIONED_METRICS.md) and [extraction](EXTRACTION.md).

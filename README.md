@@ -2,12 +2,12 @@
 
 Reconcile a metric you rebuilt from source data against figures in a trusted report, one explained change at a time, and keep a record of the work.
 
-A judge (a rule-based baseline, an LLM, or an agent working in a notebook) proposes one definitional change at a time. Code runs the query and computes the variance. Guardrails decide whether the change is accepted. The loop stops when the fit numbers match or no defensible change remains, and records the holdout check and possible causes of any residual. Declared options constrain the search; the result still needs review.
+A judge (a rule-based baseline, an LLM, or an agent working in a notebook) proposes a definitional change or a bounded group of changes that belong together. Code runs the queries and computes the variance. Guardrails accept or reject the whole proposal. The loop stops when the fit numbers match or no defensible change remains, and records the holdout check and possible causes of any residual. Declared options constrain the search; the result still needs review.
 
 ```
 trusted report ──extract──▶ targets ─┐
                                      ▼
-metric spec (allowed choices) ──▶ run ──▶ compare ──▶ judge proposes ONE named change
+metric spec (allowed choices) ──▶ run ──▶ compare ──▶ judge proposes a named change
                                      ▲                         │
                                      └──── guardrails: accept / reject ◀┘
                                                      │
@@ -65,6 +65,27 @@ decisions and holdout checks. Use `--report` and `--metric` to select a subset,
 or `ReconSession.open_next()` and `progress()` for an agent work queue. See
 [multi-metric workflow](docs/MULTI_METRIC.md).
 
+## Versioned data, shares and territories
+
+```sh
+python examples/versioned_metrics/generate_data.py
+reconloop run examples/versioned_metrics/config.toml --out out_versioned
+reconloop score out_versioned examples/versioned_metrics/answers.json
+reconloop revisions examples/versioned_metrics/config.toml --metric total_volume --parameter data_vintage --before published --after refreshed --records out_versioned --out out_revisions
+```
+
+The fictional example covers five metrics, duplicate category memberships, source
+date/cycle partitions, dated territory assignments and numerator/denominator shares.
+The stated-rule judge recovers 5/5 definitions and passes their holdouts. One share
+requires a three-parameter proposal; each single edit initially makes it worse.
+Ratio components are recorded even when their changes cancel in the final ratio.
+See [versioned metrics](docs/VERSIONED_METRICS.md) for configuration and limits.
+
+`reconloop job config.toml --out private/runs` provides one isolated batch for an
+external scheduler, with a JSON manifest and exit codes for success, review, or
+failure. It does not install a scheduler. Difficult PDF crops can use a caller's
+vision endpoint with [mandatory transcription review](docs/EXTRACTION.md#vision-assisted-transcription).
+
 ## Ways to run it
 
 | Mode | Judge | Use when |
@@ -89,6 +110,9 @@ src/reconloop/
   schema.py        Target, Change, Iteration, Residual, ReconRecord
   hypotheses.py    the catalog of legitimate reasons numbers differ
   metricspec.py    SQL template + declared options per parameter
+  sql.py           snapshot, deduplication and dated assignment builders
+  revisions.py     comparisons between declared source vintages
+  jobs.py          isolated batch runs and scheduler manifests
   compare.py       variance and residual shape (level shift / drift / noisy)
   guardrails.py    acceptance rules
   loop.py          automatic loop with any judge
@@ -101,6 +125,7 @@ src/reconloop/
 examples/fictional_retail/   demo data generator, config, answers
 examples/multi_metric/       three KPIs with shared parameter declarations
 examples/tableau_raster/     synthetic raster PDF and extraction template
+examples/versioned_metrics/ five KPIs with snapshots, shares and territories
 notebooks/                   Databricks notebook for agent-as-judge
 AGENT_GUIDE.md               instructions for the agent
 docs/                        design, adapting to your data, extraction
@@ -108,9 +133,10 @@ docs/                        design, adapting to your data, extraction
 
 ## Status
 
-Version 0.2. Multiple report/metric pairs per run, one parameter change per step,
-SQL-template metrics, and template-driven PDF/OCR extraction. Shared parameter
-groups reuse declarations; joint optimization across metrics is not implemented.
+Version 0.3. Multiple report/metric pairs, bounded compound changes, audited ratio
+components, versioned source and alignment options, revision diagnostics, batch
+manifests, and PDF/OCR extraction with an optional reviewed vision callback.
+Shared parameter groups reuse declarations; joint optimization across metrics is not implemented.
 See `docs/DESIGN.md` for planned extensions.
 
 `explained_residual` means a pattern suggests possible causes; it does not establish that a restatement occurred. Agent-added options remain subject to human review, even if their numbers match.

@@ -6,7 +6,7 @@ from math import isfinite
 from pathlib import Path
 from urllib.parse import quote
 
-from .schema import ReconRecord
+from .schema import ReconRecord, CompoundChange, change_items
 
 
 def record_filename(report: str, metric: str) -> str:
@@ -63,10 +63,21 @@ def to_markdown(records: list[ReconRecord]) -> str:
             if i.change is None:
                 lines.append(f"| {i.step} | start | – | {i.fit_variance:.2%} | {fmt(i.holdout_variance)} | – |")
                 continue
-            c = i.change
             outcome = "accepted" if i.accepted else f"rejected: {i.reject_reason}"
-            lines.append(f"| {i.step} | {c.param}: {c.old} → {c.new} | {c.hypothesis}: {c.rationale} | "
+            changes = "; ".join(f"{c.param}: {c.old} → {c.new}" for c in change_items(i.change))
+            reasons = "; ".join(f"{c.hypothesis}: {c.rationale}" for c in change_items(i.change))
+            if isinstance(i.change, CompoundChange):
+                reasons += f"; Joint reason: {i.change.rationale}"
+            lines.append(f"| {i.step} | {changes} | {reasons} | "
                          f"{i.fit_variance:.2%} | {fmt(i.holdout_variance)} | {outcome} |")
+        final = next(i for i in reversed(r.iterations) if i.accepted is not False)
+        component_rows = [row for row in final.per_target if row.get("components")]
+        if component_rows:
+            lines += ["", "| Period | Split | Numerator | Denominator | Scale | Ratio |",
+                      "|---|---|---|---|---|---|"]
+            for row in component_rows:
+                c = row["components"]
+                lines.append(f"| {row['as_of']} | {row['split']} | {c['numerator']:.8g} | {c['denominator']:.8g} | {c['scale']:g} | {row['computed']:.8g} |")
         lines += ["", "Final query (first as-of date):", "", "```sql", r.final_query, "```"]
     return "\n".join(lines) + "\n"
 

@@ -53,13 +53,29 @@ class Change:
 
 
 @dataclass
+class CompoundChange:
+    """A bounded set of definition edits evaluated and accepted atomically."""
+    changes: list[Change]
+    rationale: str
+    proposed_by: str = ""
+
+
+def change_items(change: Change | CompoundChange) -> list[Change]:
+    return change.changes if isinstance(change, CompoundChange) else [change]
+
+
+def change_key(change: Change | CompoundChange) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((c.param, c.new) for c in change_items(change)))
+
+
+@dataclass
 class Iteration:
     step: int
     params: dict[str, str]
     fit_variance: float             # mean absolute relative variance on fit targets
     holdout_variance: float | None
     per_target: list[dict[str, Any]]
-    change: Change | None = None
+    change: Change | CompoundChange | None = None
     accepted: bool | None = None
     reject_reason: str = ""
 

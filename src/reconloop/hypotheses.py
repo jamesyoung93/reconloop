@@ -16,6 +16,9 @@ CATALOG: dict[str, str] = {
     "restatement": "The source was revised after the report was published.",
     "late_data": "Records that arrive after the cut-off and change recent periods.",
     "source": "A different or partial source: a feed the report uses that the platform does not have.",
+    "category_filter": "Different category eligibility: an entity can belong to more than one category.",
+    "data_vintage": "Different source snapshot or processing cycle available at the reporting cutoff.",
+    "alignment_vintage": "Different dated version of the entity-to-territory assignment.",
 }
 
 # Residual patterns and the causes they usually point to (used when the loop stops short).
