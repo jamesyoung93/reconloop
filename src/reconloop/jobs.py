@@ -30,3 +30,28 @@ def run_job(config, out_dir, **kwargs):
     manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
     (out / "run.json").write_text(json.dumps(manifest, indent=2, allow_nan=False), encoding="utf-8")
     return manifest
+
+
+def batch_run(configs, out_dir, *, max_workers=4, **kwargs):
+    """Bounded driver-side config fan-out; each batch member retains its own manifest."""
+    from .execution import ordered_map, worker_count
+    from .storage import local_path
+    worker_count(max_workers)
+    if not configs:
+        raise ValueError("batch needs at least one config")
+    if kwargs.get("parallel"):
+        raise ValueError("choose config fan-out or metric parallelism; nested pools are disabled")
+    if "judge" in kwargs or "runner_factory" in kwargs:
+        raise ValueError("batch workers cannot share a judge or runner factory; use judge_factory and configured runners")
+    out = local_path(out_dir) / ("batch-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid4().hex[:12])
+    out.mkdir(parents=True, exist_ok=False)
+    def run(config):
+        try:
+            return run_job(config, out, **kwargs)
+        except Exception as exc:
+            return dict(status="failed", config=str(config), error=str(exc))
+    runs = ordered_map(run, list(configs), max_workers)
+    status = "failed" if any(r["status"] == "failed" for r in runs) else "needs_review" if any(r["status"] != "complete" for r in runs) else "complete"
+    manifest = dict(status=status, runs=runs, output_dir=str(out), max_workers=max_workers)
+    (out / "batch.json").write_text(json.dumps(manifest, indent=2, allow_nan=False), encoding="utf-8")
+    return manifest

@@ -19,10 +19,11 @@ def config(tmp_path):
     return tmp_path / "config.toml"
 
 
-def test_coupled_example_in_batch_and_jobs(config, tmp_path):
+@pytest.mark.parametrize("parallel", [False, True])
+def test_coupled_example_in_batch_and_jobs(config, tmp_path, parallel):
     def forbidden(*args):
         pytest.fail("coupled groups must not delegate to an independent per-metric judge")
-    records = run_config(config, judge_factory=forbidden, out_dir=tmp_path / "out", log=lambda *a: None)
+    records = run_config(config, judge_factory=forbidden, out_dir=tmp_path / "out", log=lambda *a: None, parallel=parallel)
     assert len(records) == 3 and all(r.status == "reconciled" for r in records)
     assert score_dir(tmp_path / "out", config.parent / "answers.json")["cases_correct"] == "3/3"
     assert all(e["passed"] for e in records[0].coupling["final_identities"])

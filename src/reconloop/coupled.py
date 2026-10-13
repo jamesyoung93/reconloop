@@ -233,4 +233,7 @@ def reconcile_coupled(group, specs, targets, runner, *, policy=None, start=None,
             record.residual.note += f" Coupled group {group.name!r} is not jointly reconciled; review all members."
     log(f"[{report} / group {group.name}] {len(attempts)} fit candidates; "
         + ("jointly reconciled" if valid_group else "unresolved") + (f"; {reason}" if reason else ""))
+    from .diagnostics import diagnose_record
+    for record in records:
+        diagnose_record(record)
     return records

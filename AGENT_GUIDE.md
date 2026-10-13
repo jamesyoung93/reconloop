@@ -28,6 +28,10 @@ s.report("out/")                            # write the show-your-work record
 
 ## How to work each pair
 
+Use [setup discovery](docs/SETUP_WORKFLOW.md) when source mappings or PDF regions
+are not yet established. Draft mappings and discovered figures require independent
+review; a model cannot approve its own transcription or configuration.
+
 For multi-metric dashboards, use `pending_pairs`, `open_next` and `progress` to
 track the complete work queue. Every metric has its own choices and tolerance;
 do not copy accepted changes to another metric without evaluating them there.
@@ -50,6 +54,14 @@ See [coupled reconciliation](docs/COUPLED_METRICS.md).
 6. Repeat until the status says DONE, or until no defensible change is left.
 7. `close()`.
 
+If progress depends on missing information, call `defer(reason)` and move to the
+next pending pair. Optional `depends_on=[(report, metric)]` requires those pairs
+to reconcile before `resume(report, metric)`. Resuming preserves every attempt
+and the remaining change budget. Do not restart a deferred pair to reset either.
+Persist work with `checkpoint(path, source_version=...)`; restore into an empty
+session with identical inputs and immutable source data. Keep checkpoints private
+because they include holdout values. See [session lifecycle](docs/LIFECYCLE_DIAGNOSTICS.md).
+
 ## Rules
 
 - **Never chase the number.** A smaller gap is not the goal. An explained gap is. If the right definition leaves a constant 1.5% gap, that is a good result: close it and let the record say "likely restatement".
@@ -61,6 +73,7 @@ See [coupled reconciliation](docs/COUPLED_METRICS.md).
 - Calibrated chart values are estimates. Independently review axis ticks, category, date, units and uncertainty before accepting them; bounds never widen reconciliation tolerances automatically.
 - Ratios can hide equal changes in numerator and denominator. Review their component audit and use independently established grains; a matching share does not prove correct deduplication.
 - Run `compare_vintages` after closing the reconciliation, holding its final choices fixed. This diagnostic can contain holdout values; do not use it to tune the definition.
+- Post-close ratio diagnostics suggest possible unit or definition differences. They do not authorize scaling targets or establish causality. Declared breakdowns need their own independent reference targets.
 - If you are unsure between two changes, pick the one the stated rule supports. If neither is supported, pick the smaller and more common definitional difference.
 
 ## What to report back
@@ -70,6 +83,7 @@ When all pairs are closed, call `s.report("out/")` and summarise in a few lines:
 - which closed with an explained residual, and the likely cause
 - which are unresolved, and what a person should check
 - any options you added that need review
+- deferred pairs, reasons and unresolved dependencies
 
 For example, an atomic assignment change:
 

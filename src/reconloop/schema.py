@@ -110,6 +110,8 @@ class ReconRecord:
     iterations: list[Iteration]
     residual: Residual
     coupling: dict[str, Any] | None = None
+    diagnostics: dict[str, Any] | None = None
+    lifecycle: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

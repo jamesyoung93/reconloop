@@ -199,7 +199,10 @@ still need validation; the tests use known synthetic images and PDFs.
 
 ## Remaining extraction limits
 
-This is template-driven extraction, not automatic dashboard understanding. Tiny fonts,
+For page discovery without predefined regions, use the reviewed
+[automatic PDF workflow](SETUP_WORKFLOW.md#locate-figures-across-pdf-pages).
+
+The text/OCR and chart paths are template-driven. Tiny fonts,
 overlapping labels, rotated tiles, international number formats and unlabeled
 charts outside the calibrated bar contract need another extractor. No real Tableau
 export was used to establish accuracy; integration tests exercise actual local

@@ -82,10 +82,15 @@ print(s.open_next())          # optionally open_next("weekly_dashboard")
 s.report("out_multi")
 ```
 
-Close the active pair before opening another. Closed pairs cannot be reopened in
+Close or defer the active pair before opening another. Closed pairs cannot be reopened in
 the same session, preventing duplicate records from overwriting one another.
 Start a new session for a rerun. Invalid targets now fail at session construction
 rather than waiting for `open`.
+
+Use `defer(reason, depends_on=[...])` to park a pair and `resume(report, metric)` to
+continue with its full history and remaining budget. Deferred pairs have a separate
+queue and never appear closed. Private checkpoints can persist active/deferred work
+across process restarts. See [lifecycle and diagnostics](LIFECYCLE_DIAGNOSTICS.md).
 
 For model judges with mutable conversations, use a fresh instance per pair:
 
@@ -100,3 +105,5 @@ records = run_config("config.toml",
 that instance is reused across pairs as before; reset external conversation state
 yourself. Do not pass both `judge` and `judge_factory`.
 These judge arguments apply only to metrics outside declared coupled groups.
+Parallel runs require a factory for custom or model judges. See
+[bounded execution](EXECUTION.md) for runner isolation, async callbacks and caching.

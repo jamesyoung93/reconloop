@@ -34,6 +34,19 @@ reconloop score out_rule examples/fictional_retail/answers.json
 
 Open `out_rule/report.md` to see the step-by-step record.
 
+## Prepare a run
+
+```sh
+python examples/setup_workflow/generate_data.py --out private/setup
+reconloop discover private/setup/schema.json private/setup/targets.csv --table facts --dictionary private/setup/dictionary.csv --out private/setup-draft
+```
+
+Schema and CSV/XLSX dictionary metadata produce a configuration draft with candidate
+mappings and explicit review questions. Draft configs cannot execute until reviewed
+and approved. `extract_pdf_auto` can locate requested figures across PDF pages through
+a caller-owned vision callback, retaining source evidence and requiring independent
+review. See [setup workflow](docs/SETUP_WORKFLOW.md).
+
 ## Rasterized dashboard PDFs
 
 Extract labelled KPI tiles from digital, hybrid or fully rasterized exports with
@@ -67,6 +80,10 @@ parameter groups reduce repeated config, while each metric keeps independent
 decisions and holdout checks. Use `--report` and `--metric` to select a subset,
 or `ReconSession.open_next()` and `progress()` for an agent work queue. See
 [multi-metric workflow](docs/MULTI_METRIC.md).
+
+Independent metrics can run with `--parallel --max-workers 4`. Config batches,
+async completion callbacks, bounded fit precomputation and an optional source-versioned
+scalar cache are covered in [execution](docs/EXECUTION.md).
 
 For related metrics, declare a coupled group to enforce identities such as
 `share.numerator = category_volume.value`, or require matching parameter choices.
@@ -114,6 +131,11 @@ mounted Unity Catalog volumes. The repository includes a pinned-package cluster
 init script and a readiness notebook. See [deployment and storage](docs/DEPLOYMENT.md)
 for runtime requirements, permissions and checks to run on the actual cluster.
 
+Sessions support `defer`, `resume` and private JSON checkpoints without resetting
+their history or change budget. Closed records include stable-ratio diagnostics;
+configured vintage and category breakdowns can investigate residuals while keeping
+the final definition fixed. See [lifecycle and diagnostics](docs/LIFECYCLE_DIAGNOSTICS.md).
+
 ## Ways to run it
 
 | Mode | Judge | Use when |
@@ -144,6 +166,10 @@ src/reconloop/
   coupled.py       fit-only joint search with cross-metric constraints
   storage.py       immutable verified target bundles and mounted paths
   doctor.py        dependency, PDF rendering and OCR readiness checks
+  discovery.py     metadata mappings and review-required config drafts
+  diagnostics.py   post-close factors, components and declared breakdowns
+  checkpoint.py    resumable session state bound to inputs and policy
+  execution.py     bounded parallel dispatch and fit precomputation
   jobs.py          isolated batch runs and scheduler manifests
   compare.py       variance and residual shape (level shift / drift / noisy)
   guardrails.py    acceptance rules
@@ -160,6 +186,7 @@ examples/tableau_raster/     synthetic raster PDF and extraction template
 examples/versioned_metrics/ five KPIs with snapshots, shares and territories
 examples/coupled_metrics/   volumes and share constrained together
 examples/calibrated_bars/   synthetic chart and explicit linear calibration
+examples/setup_workflow/   fictional schema, dictionary and target generator
 notebooks/                   Databricks notebook for agent-as-judge
 AGENT_GUIDE.md               instructions for the agent
 docs/                        design, adapting to your data, extraction
@@ -167,13 +194,16 @@ docs/                        design, adapting to your data, extraction
 
 ## Status
 
-Version 0.4.0 adds bounded coupled reconciliation, reviewed bar-chart estimates,
-verified target bundles and cluster readiness checks to the existing multi-metric,
-versioned-data, ratio, compound-change and PDF/OCR workflows.
+Version 0.5.0 adds reviewed report discovery and configuration drafts, deferred
+sessions with checkpoints, post-close diagnostics, bounded parallel execution,
+async completions, fit precomputation and a versioned scalar cache. It also includes
+coupled reconciliation, reviewed bar-chart estimates, verified target bundles and
+cluster readiness checks.
 Coupled groups require aligned periods and declared identities; interactive
 single-metric sessions reject coupled configurations. Chart measurement requires
-explicit calibration and review. Live cluster installation and volume access
-still need validation in the deployment environment.
+explicit calibration and review. Live cluster installation, scheduling and volume
+access still need validation in the deployment environment. Real-report model
+extraction accuracy is not benchmarked.
 See `docs/DESIGN.md` for planned extensions.
 
 `explained_residual` means a pattern suggests possible causes; it does not establish that a restatement occurred. Agent-added options remain subject to human review, even if their numbers match.

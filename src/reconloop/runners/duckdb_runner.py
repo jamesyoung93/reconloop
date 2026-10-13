@@ -24,3 +24,6 @@ class DuckDBRunner:
                 raise ValueError("metric query must return exactly one row and one column named 'value'")
             self.cache[sql] = scalar_value(rows[0][0])
         return self.cache[sql]
+
+    def close(self):
+        self.con.close()

@@ -88,7 +88,10 @@ def reconcile(spec: MetricSpec, targets: list[Target], runner, judge, policy: Po
     status, residual = summarize_result(final, spec.tolerance)
     log(f"  -> {status}: fit {final.fit_variance:.2%} ({residual.pattern})")
     sample_as_of = targets[0].as_of if targets else "YYYY-MM-DD"
-    return ReconRecord(report=report, metric=spec.name, start_params=start_params, final_params=dict(params),
+    record = ReconRecord(report=report, metric=spec.name, start_params=start_params, final_params=dict(params),
                        final_query=spec.render(params, sample_as_of), tolerance=spec.tolerance, status=status,
                        iterations=history,
                        residual=residual)
+    from .diagnostics import diagnose_record
+    diagnose_record(record)
+    return record
